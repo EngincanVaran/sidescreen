@@ -7,7 +7,11 @@ An always-on information dashboard for the Mac mini's portable display (1920×10
 - **Info card** (rotates): TL rates and gram gold with 30-day trend lines, crypto (and stocks, with a key), World news and Türkiye news.
 - **Sports card** (rotates, with Football / Basketball / Tennis tabs): your teams, today's football with live scores, league tables (Süper Lig, Premier League, La Liga, Bundesliga, Serie A, Ligue 1, Champions League, Europa League, Conference League), EuroLeague and EuroCup games and standings (clubs you follow in football are highlighted in basketball too), ATP/WTA matches and rankings. Competition logos, and a red LIVE badge when something is being played.
 - **Follow teams** with the star button on the sports card. Followed teams are highlighted in tables and matches, shown first, and get a "Your teams" panel with their position and next fixture.
-- **Alerts** at the top of the screen (also over a video): goals with the scorer, kick-off reminders before your teams play, kick-off and full time, reminders when they're due, and Claude sessions that need you. Click one to dismiss it.
+- **Alerts** at the top of the screen (also over a video). Click one to dismiss it. At most 4 show at once; goals stay longest.
+  - Football: a reminder before your teams play, kick-off, every goal with the scorer (own goals credited to the right team; if ESPN hasn't named the scorer yet, the alert fills it in when it does), goals ruled out by VAR, half time and full time.
+  - Basketball (EuroLeague / EuroCup): tip-off, the end of each quarter and half time with who's leading, and the final score.
+  - Tennis: match start, each set, and the winner, for matches with a top-10 player or from the quarter-finals on.
+  - Reminders when they're due, and Claude sessions that need you.
 - Claude Code sessions: needs you, working, done. "Needs you" covers permission prompts, Claude's question dialogs and plan approvals, and replies that end by asking you something. The card grows and shrinks with the number of sessions, and the sports card uses the space it frees. Session states are kept in `sessions.json`, so they survive a server restart.
 - Click a rotating card to skip to its next panel. The page reloads itself when the server or page is updated.
 
@@ -90,7 +94,7 @@ Stocks need a free key from [Twelve Data](https://twelvedata.com) (about 800 req
 | `reminders` | `enabled`, `lists` (empty = all lists), `days_ahead`. |
 | `spotify` | `enabled` (default `true`). |
 | `kickoff_reminder_minutes` | Alert this many minutes before a followed team plays (0 = off). |
-| `goal_alerts` | `"followed"` (your teams only) or `"all"` (every live match). |
+| `goal_alerts` | `"followed"` (your teams only; in basketball, clubs with the same name as a team you follow) or `"all"` (every live game, including all tennis matches). |
 | `news` | Groups of RSS feeds, each with a `name` and `feeds`. Optional `exclude` hides headlines containing any of those words. |
 | `football` | ESPN codes: `tur.1`, `eng.1`, `esp.1`, `ger.1`, `ita.1`, `fra.1`, `uefa.champions`, `uefa.europa`, `uefa.europa.conf`. |
 | `tennis` | `atp`, `wta`. |

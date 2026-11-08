@@ -394,6 +394,7 @@
     <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
     <symbol id="i-trend" viewBox="0 0 24 24"><path d="M3 17l5.5-5.5 4 4L21 7"/><path d="M15 7h6v6"/></symbol>
     <symbol id="i-ball" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5l4.3 3.1-1.6 5h-5.4l-1.6-5z"/><path d="M12 7.5V3M16.3 10.6l4.3-1.4M14.7 15.6l2.7 3.7M9.3 15.6l-2.7 3.7M7.7 10.6L3.4 9.2"/></symbol>
+    <symbol id="i-bball" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18M5.6 5.6c3 3 3 9.8 0 12.8M18.4 5.6c-3 3-3 9.8 0 12.8"/></symbol>
     <symbol id="i-tennis" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6a9 9 0 0 1 0 12.8M18.4 5.6a9 9 0 0 0 0 12.8"/></symbol>
     <symbol id="i-news" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M7.5 9h9M7.5 12.5h9M7.5 16h5"/></symbol>
     <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
@@ -706,7 +707,11 @@
     if (kind !== 'claude') el.addEventListener('click', close);
     if (ms) setTimeout(close, ms);
     alertsEl.appendChild(el);
-    while (alertsEl.children.length > 4) alertsEl.firstElementChild.remove();
+    // At most 4 on screen: drop the oldest, but keep goals and the Claude alert over anything else.
+    while (alertsEl.children.length > 4) {
+      const kids = [...alertsEl.children].filter(e => e !== el);  // never the one just added
+      (kids.find(e => !['goal', 'claude'].includes(e.dataset.k)) || kids.find(e => e.dataset.k !== 'claude') || kids[0]).remove();
+    }
     return el;
   }
   // The Claude "needs you" alert only shows over a video; in ambient mode the sessions card covers it.
@@ -975,7 +980,7 @@
   }
   function bbRow(m) {
     const d = new Date(m.date);
-    const st = m.state === 'in' ? 'LIVE' : m.state === 'post' ? 'FT' : fmtTime.format(d);
+    const st = m.state === 'in' ? esc((m.detail || 'Live').replace('End of ', 'End ').replace('Half time', 'HT')) : m.state === 'post' ? 'FT' : fmtTime.format(d);
     const sc = m.state === 'pre' ? 'vs' : `${esc(m.home.score)} – ${esc(m.away.score)}`;
     const nm = t => bbMine(t) ? `<b>${esc(t.team)}</b>` : esc(t.team);
     const mine = bbMine(m.home) || bbMine(m.away);
@@ -1000,7 +1005,7 @@
   }
   async function loadBasketball() {
     if (forceDemo) return;
-    try { hoops = await getJSON('/api/basketball'); spR.draw(false); } catch {}
+    try { hoops = await getJSON('/api/basketball'); spR.draw(false); checkHoops(); } catch {}
   }
 
   function tennisMatches(tour) {
@@ -1240,27 +1245,114 @@
   // ---------- Goal, full-time and kick-off alerts ----------
   const prevScores = new Map();
   let scoresPrimed = false;
+  // Goals per side. ESPN's own-goal attribution varies, so pick the reading whose counts match the score.
+  function goalsBySide(m) {
+    const h = m.home.id, a = m.away.id, gs = m.goals || [];
+    const split = flipOwn => {
+      const out = { [h]: [], [a]: [] };
+      gs.forEach(g => {
+        let t = g.team_id;
+        if (flipOwn && /own/i.test(g.kind || '')) t = t === h ? a : h;
+        (out[t] || (out[t] = [])).push(g);
+      });
+      return out;
+    };
+    const fits = x => x[h].length === (Number(m.home.score) || 0) && x[a].length === (Number(m.away.score) || 0);
+    const asIs = split(false), flipped = split(true);
+    return fits(flipped) ? flipped : asIs;
+  }
+  const goalText = g => g ? `${g.player || 'Goal'} ${g.clock}${g.kind && !/^goal$/i.test(g.kind) ? ' · ' + g.kind : ''}` : '';
+  const pendingScorers = new Map();  // alert key -> { key, side, n }: goals whose scorer ESPN hasn't published yet
   function checkGoals() {
     const all = footy.leagues.flatMap(l => l.matches.map(m => ({ ...m, lg: l.name, logo: l.logo })));
     for (const m of all) {
       const key = m.id || m.home.team + '|' + m.away.team + '|' + m.date;
-      const cur = { h: Number(m.home.score) || 0, a: Number(m.away.score) || 0, state: m.state };
+      const cur = { h: Number(m.home.score) || 0, a: Number(m.away.score) || 0, state: m.state, status: m.status || '' };
       const prev = prevScores.get(key);
       prevScores.set(key, cur);
       const watch = cfg.goal_alerts === 'all' || mineMatch(m);
       if (!scoresPrimed || !prev || !watch) continue;
       const line = `${m.home.team} ${cur.h} – ${cur.a} ${m.away.team}`;
-      const side = cur.h > prev.h ? m.home : cur.a > prev.a ? m.away : null;
-      if (side && m.state === 'in') {
-        const g = [...(m.goals || [])].reverse().find(x => x.team_id === side.id);
-        const extra = g && g.kind && !/^goal$/i.test(g.kind) ? ' · ' + g.kind : '';
-        showAlert({ kind: 'goal', tag: 'Goal · ' + m.lg, title: line, body: g ? `${g.player} ${g.clock}${extra}` : `${side.team} scored`,
-          img: m.logo, icon: 'ball', key: `goal:${key}:${cur.h}-${cur.a}`, ms: 30000 });
-      }
-      if (prev.state === 'pre' && cur.state === 'in') showAlert({ kind: 'kickoff', tag: 'Kick-off · ' + m.lg, title: `${m.home.team} – ${m.away.team}`, body: 'The match has started', img: m.logo, icon: 'ball' });
-      if (prev.state === 'in' && cur.state === 'post') showAlert({ kind: 'ft', tag: 'Full time · ' + m.lg, title: line, img: m.logo, icon: 'ball', ms: 30000 });
+      const base = { img: m.logo, icon: 'ball' };
+      if (prev.state === 'pre' && cur.state !== 'pre') showAlert({ ...base, kind: 'kickoff', tag: 'Kick-off · ' + m.lg, title: `${m.home.team} – ${m.away.team}`, body: 'The match has started' });
+      // Every new goal gets its own alert, for both teams (two goals between checks = two alerts).
+      const by = goalsBySide(m);
+      [[m.home, prev.h, cur.h], [m.away, prev.a, cur.a]].forEach(([side, was, now]) => {
+        for (let n = was + 1; n <= now; n++) {
+          const list = by[side.id] || [];
+          // Only name a scorer when ESPN's list has caught up with the score; otherwise fill it in later.
+          const g = list.length >= n ? list[n - 1] : null;
+          const akey = `goal:${key}:${side.id}:${n}`;
+          showAlert({ ...base, kind: 'goal', tag: 'Goal · ' + side.team + ' · ' + m.lg, title: line,
+            body: g ? goalText(g) : `${side.team} scored · scorer to follow`, key: akey, ms: 30000 });
+          if (!g) pendingScorers.set(akey, { key, side: side.id, n });
+        }
+        if (now < was) showAlert({ ...base, kind: 'ft', tag: 'Goal disallowed · ' + m.lg, title: line, body: `${side.team}'s goal was ruled out`, ms: 25000 });
+      });
+      if (prev.status !== 'STATUS_HALFTIME' && cur.status === 'STATUS_HALFTIME') showAlert({ ...base, kind: 'ft', tag: 'Half time · ' + m.lg, title: line, body: m.detail || 'HT', ms: 25000 });
+      if (prev.state === 'in' && cur.state === 'post') showAlert({ ...base, kind: 'ft', tag: 'Full time · ' + m.lg, title: line, body: m.detail || 'FT', ms: 30000 });
+    }
+    // Fill in scorers that arrived late, while their alert is still on screen.
+    for (const [akey, p] of pendingScorers) {
+      const el = [...alertsEl.children].find(e => e.dataset.key === akey);
+      if (!el) { pendingScorers.delete(akey); continue; }
+      const m = all.find(x => (x.id || x.home.team + '|' + x.away.team + '|' + x.date) === p.key);
+      const g = m && (goalsBySide(m)[p.side] || [])[p.n - 1];
+      if (g) { el.querySelector('span').textContent = goalText(g); pendingScorers.delete(akey); }
     }
     scoresPrimed = true;
+  }
+
+  // ---------- Tennis alerts: match start, each set, result ----------
+  // Watched: matches with a top-10 player or from the quarter-finals on (all matches with goal_alerts "all").
+  const tennisPrev = new Map();
+  let tennisPrimed = false;
+  function checkTennis() {
+    const all = tennis.tours.flatMap(t => t.tournaments.flatMap(tn => tn.matches.map(m => ({ ...m, tour: t.name, lg: tn.name }))));
+    for (const m of all) {
+      if (!m.id) continue;
+      const [a, b] = m.players;
+      const cur = { state: m.state, sets: a.sets.length };
+      const prev = tennisPrev.get(m.id);
+      tennisPrev.set(m.id, cur);
+      const watch = cfg.goal_alerts === 'all' || [a, b].some(p => p.rank && p.rank <= 10) || /^(QF|SF|F)$/.test(m.round || '');
+      if (!tennisPrimed || !prev || !watch) continue;
+      const names = `${a.name} – ${b.name}`, tag = `${m.tour} · ${m.lg}${m.round ? ' · ' + m.round : ''}`;
+      const score = upto => a.sets.slice(0, upto).map((g, i) => `${g}–${b.sets[i] ?? 0}`).join(', ');
+      if (prev.state === 'pre' && cur.state === 'in') showAlert({ kind: 'kickoff', icon: 'tennis', tag: 'Match started · ' + tag, title: names, body: 'First serve' });
+      if (cur.state === 'in' && cur.sets > prev.sets && prev.sets > 0) {
+        const i = cur.sets - 2, wa = a.sets[i] > b.sets[i];
+        showAlert({ kind: 'ft', icon: 'tennis', tag: `Set ${i + 1} · ` + tag, title: names, body: `${wa ? a.name : b.name} takes it · ${score(i + 1)}`, ms: 25000 });
+      }
+      if (prev.state === 'in' && cur.state === 'post') {
+        const w = a.winner ? a : b.winner ? b : null;
+        showAlert({ kind: 'goal', icon: 'tennis', tag: 'Match won · ' + tag, title: w ? `${w.name} wins` : names, body: score(cur.sets), ms: 30000 });
+      }
+    }
+    tennisPrimed = true;
+  }
+
+  // ---------- Basketball alerts: tip-off, end of each quarter, final ----------
+  const hoopsPrev = new Map();
+  let hoopsPrimed = false;
+  function checkHoops() {
+    const all = hoops.leagues.flatMap(l => [...l.matches, ...(l.previous || [])].map(m => ({ ...m, lg: l.name })));
+    for (const m of all) {
+      if (!m.id) continue;
+      const cur = { state: m.state, detail: m.detail || '' };
+      const prev = hoopsPrev.get(m.id);
+      hoopsPrev.set(m.id, cur);
+      const watch = cfg.goal_alerts === 'all' || bbMine(m.home) || bbMine(m.away);
+      if (!hoopsPrimed || !prev || !watch) continue;
+      const line = `${m.home.team} ${m.home.score ?? 0} – ${m.away.score ?? 0} ${m.away.team}`;
+      const diff = (Number(m.home.score) || 0) - (Number(m.away.score) || 0);
+      const lead = diff ? `${diff > 0 ? m.home.team : m.away.team} ${cur.state === 'post' ? 'win' : 'lead'} by ${Math.abs(diff)}` : 'All square';
+      if (prev.state === 'pre' && cur.state === 'in') showAlert({ kind: 'kickoff', icon: 'bball', tag: 'Tip-off · ' + m.lg, title: `${m.home.team} – ${m.away.team}`, body: 'The game has started' });
+      if (cur.state === 'in' && cur.detail !== prev.detail && /^(End of|Half time)/.test(cur.detail))
+        showAlert({ kind: 'ft', icon: 'bball', tag: cur.detail + ' · ' + m.lg, title: line, body: lead, key: `bbq:${m.id}:${cur.detail}`, ms: 25000 });
+      if (prev.state === 'in' && cur.state === 'post') showAlert({ kind: 'ft', icon: 'bball', tag: 'Final · ' + m.lg, title: line, body: lead, ms: 30000 });
+    }
+    hoopsPrimed = true;
   }
   function checkKickoffs() {
     const mins = Number(cfg.kickoff_reminder_minutes ?? 15);
@@ -1337,7 +1429,7 @@
     try { news = forceDemo ? demoNews() : await getJSON('/api/news'); finR.draw(false); } catch {}
   }
   async function loadTennis() {
-    try { tennis = forceDemo ? demoTennis() : await getJSON('/api/tennis'); spR.draw(false); } catch {}
+    try { tennis = forceDemo ? demoTennis() : await getJSON('/api/tennis'); spR.draw(false); checkTennis(); } catch {}
   }
 
   // ---------- Sample data (used with ?demo) ----------

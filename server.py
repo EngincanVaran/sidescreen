@@ -541,6 +541,7 @@ def fetch_scores(league):
             matches.append({
                 "id": str(ev.get("id") or ""),
                 "date": ev.get("date"), "state": st.get("state"), "detail": st.get("shortDetail") or "",
+                "status": st.get("name") or "",
                 "home": sides["home"], "away": sides["away"], "goals": goals,
             })
     return {"matches": matches, "logo": league_logo(d)}
@@ -623,7 +624,7 @@ def fetch_tennis(tour):
                     continue
                 rnd = (c.get("round") or {}).get("displayName") or ""
                 rnd = TENNIS_ROUNDS.get(rnd) or re.sub(r"^Round (\d+)$", r"R\1", rnd)
-                matches.append({"date": c.get("date"), "state": state, "detail": st.get("shortDetail") or "",
+                matches.append({"id": str(c.get("id") or ""), "date": c.get("date"), "state": state, "detail": st.get("shortDetail") or "",
                                 "round": rnd, "players": players})
         if matches:
             out.append({"name": ev.get("name") or "", "matches": matches})
@@ -677,6 +678,24 @@ def bb_club(side):
             "abbr": c.get("tvCode") or c.get("code") or "", "logo": ((c.get("images") or {}).get("crest") or "")}
 
 
+def bb_live(comp, season, code):
+    """Live score, quarter and clock for one game (EuroLeague's live feed)."""
+    h = get_json(f"https://live.euroleague.net/api/Header?gamecode={code}&seasoncode={comp}{season}")
+    q = str(h.get("Quarter") or "").strip()
+    rem = str(h.get("RemainingPartialTime") or "").strip()
+    return {"live": bool(h.get("Live")), "a": str(h.get("ScoreA") or "0").strip(), "b": str(h.get("ScoreB") or "0").strip(),
+            "q": int(q) if q.isdigit() else 0, "rem": rem, "time": str(h.get("GameTime") or "")}
+
+
+def bb_detail(q, rem):
+    if not q:
+        return "Live"
+    name = f"Q{q}" if q <= 4 else ("OT" if q == 5 else f"OT{q - 4}")
+    if rem in ("00:00", "0:00"):
+        return "Half time" if q == 2 else f"End of {name}"
+    return f"{name} {rem}"
+
+
 def fetch_bb_games(comp, season):
     """Games of the current round (the one with the next unplayed game), plus last round's results."""
     data = get_json(f"{EL_API}/competitions/{comp}/seasons/{comp}{season}/games", timeout=20).get("data") or []
@@ -693,9 +712,25 @@ def fetch_bb_games(comp, season):
         if state != "pre":
             home["score"] = str((g.get("local") or {}).get("score") or 0)
             away["score"] = str((g.get("road") or {}).get("score") or 0)
+        if state == "in":
+            # Confirm with the live feed: real quarter, clock and score, or "not started" / "finished".
+            try:
+                lv = CACHE.get(f"bblive:{comp}:{g.get('gameCode')}", 25, lambda: bb_live(comp, season, g.get("gameCode")))
+                if lv["live"]:
+                    home["score"], away["score"] = lv["a"], lv["b"]
+                    g["_detail"] = bb_detail(lv["q"], lv["rem"])
+                    g["_q"] = lv["q"]
+                elif lv["time"].startswith("40:") or lv["q"] > 4 or (lv["a"] not in ("", "0") and not lv["q"]):
+                    state = "post"
+                    home["score"], away["score"] = lv["a"], lv["b"]
+                else:
+                    state = "pre"
+                    home.pop("score", None); away.pop("score", None)
+            except Exception as e:
+                log(f"basketball live {comp} {g.get('gameCode')}: {e}")
         rnd = g.get("round")
-        games.append({"id": g.get("identifier"), "date": g.get("utcDate"), "state": state, "round": rnd,
-                      "round_name": g.get("roundName") or f"Round {rnd}", "detail": "Live" if state == "in" else "",
+        games.append({"id": g.get("identifier"), "quarter": g.get("_q") or 0, "date": g.get("utcDate"), "state": state, "round": rnd,
+                      "round_name": g.get("roundName") or f"Round {rnd}", "detail": (g.get("_detail") or "Live") if state == "in" else "",
                       "group": ((g.get("group") or {}).get("name") or ""), "home": home, "away": away, "t": t})
     games.sort(key=lambda g: g["t"])
     nxt = next((g for g in games if g["state"] != "post"), None)
