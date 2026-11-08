@@ -17,7 +17,11 @@ Dims at night and drifts a few pixels every 2 minutes to avoid burn-in.
 
 ## Install
 
+Needs macOS, Python 3.9+ (the one that comes with the Xcode command line tools is fine) and Google Chrome. Claude Code is optional: without it the sessions card just stays empty.
+
 ```bash
+git clone https://github.com/EngincanVaran/sidescreen.git
+cd sidescreen
 ./install.sh
 ```
 
@@ -97,7 +101,7 @@ Other Turkish feeds that work: `https://www.hurriyet.com.tr/rss/gundem`, `https:
 - `server.py`: Python 3.9+ standard library only, listening on `127.0.0.1` only.
   - `POST /api/hook`: Claude Code hook events. Always answers `204` so it never blocks a session.
   - `GET /api/status`: sessions, sorted waiting → error → working → done → idle. Sessions idle for 8 h are dropped.
-  - `GET /api/markets`, `/api/news`, `/api/football`, `/api/tennis`, `/api/calendar`: cached on the server (rates 1 min, news 10 min, scores 1 min while live / 5 min otherwise, tables 10 min, rankings 6 h, calendar 5 min). If a source is down, the last good data is kept.
+  - `GET /api/markets`, `/api/news`, `/api/football`, `/api/tennis`, `/api/calendar`: cached on the server (rates 1 min, crypto 2 min, 30-day trends 3–6 h, news 10 min, scores 30 s while live / 5 min otherwise, tables 10 min, fixtures 1 h, rankings 6 h, calendar 5 min). If a source is down, the last good data is kept.
   - `GET /api/spotify`, `POST /api/spotify` (`{"cmd": "playpause" | "next" | "previous"}`, same rules as prefs): what Spotify is playing, and its controls.
   - `GET /api/myteams`, `/api/reminders`: followed teams' positions and next fixtures; Apple Reminders (read in the background every 3 minutes).
   - `GET`/`POST /api/prefs`: followed teams, saved to `prefs.json`. Writes are only accepted as JSON from the dashboard's own address.
@@ -105,5 +109,6 @@ Other Turkish feeds that work: `https://www.hurriyet.com.tr/rss/gundem`, `https:
 - `static/index.html`: the whole dashboard. Weather comes straight from Open-Meteo.
 - `scripts/hooks.py`: adds/removes the hooks in `settings.json`.
 - `scripts/open-display.sh` + `scripts/screen-frame.js`: find the portable screen and open Chrome on it.
+- `scripts/reminders.js`, `scripts/spotify.js`: read the Reminders and Spotify apps (JavaScript for Automation, run with `osascript`).
 
 Data sources (no API keys): [Open-Meteo](https://open-meteo.com) for weather, [Truncgil Finans](https://finans.truncgil.com) for TL rates and gold, [Frankfurter](https://frankfurter.dev) (ECB) for 30-day currency trends, [CoinGecko](https://www.coingecko.com) for crypto and the gold trend (PAX Gold, one token per troy ounce, as a stand-in), ESPN's public site API for football, tennis and logos, and publishers' RSS feeds for news. Stocks use Twelve Data with your key. Truncgil and ESPN are unofficial and could change without notice.
