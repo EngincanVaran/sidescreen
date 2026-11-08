@@ -331,6 +331,31 @@
   .video:hover .float-ctl { opacity: 1; }
   .float-ctl .btn { height: 48px; padding: 0 18px; font-size: 16px; background: rgba(19,21,25,0.85); backdrop-filter: blur(10px); }
 
+  /* Claude Code card: sessions and today's usage take turns in the same space */
+  .cc-stage { position: relative; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; }
+  .cc-stage > .slist, .cc-usage { transition: opacity .45s ease; }
+  .cc-usage { position: absolute; inset: 0; opacity: 0; pointer-events: none; display: flex; flex-direction: column; gap: 16px; overflow: hidden; }
+  .sessions.show-usage .cc-stage > .slist { opacity: 0; pointer-events: none; }
+  .sessions.show-usage .cc-usage { opacity: 1; pointer-events: auto; }
+  .sessions.cc-fade .cc-usage, .sessions.cc-fade .cc-stage > .slist, .sessions.cc-fade #cc-title { opacity: 0; }
+  #cc-title { transition: opacity .45s ease; }
+  .cc-dots { margin-left: 14px; display: inline-flex; }
+  .cc-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .cc-stats div { display: flex; flex-direction: column; gap: 4px; }
+  .cc-stats b { font-family: var(--mono); font-size: 30px; font-weight: 500; letter-spacing: -0.02em; color: var(--text); }
+  .cc-stats span { font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .cc-chart { display: flex; flex-direction: column; gap: 6px; }
+  .cc-bars { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; align-items: end; }
+  .cc-bars i { border-radius: 2px 2px 0 0; background: var(--working); min-height: 2px; }
+  .cc-bars i.zero { background: #22262D; }
+  .cc-bars i.now { box-shadow: 0 0 0 1px rgba(122,162,255,0.7); }
+  .cc-hours { display: grid; grid-template-columns: repeat(4, 1fr); font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .cc-proj { display: grid; grid-template-columns: 170px 1fr 70px; gap: 6px 14px; align-items: center; font-size: 16px; }
+  .cc-proj .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-2); }
+  .cc-proj .bar { height: 6px; border-radius: 3px; background: #22262D; overflow: hidden; }
+  .cc-proj .bar i { display: block; height: 100%; background: var(--working); opacity: .8; border-radius: 3px; }
+  .cc-proj .v { font-family: var(--mono); font-size: 14px; color: var(--muted); text-align: right; }
+
   /* Claude Code usage line */
   .usage { display: flex; align-items: center; gap: 14px; font-size: 15px; color: var(--muted); font-family: var(--mono); white-space: nowrap; min-width: 0; }
   .usage b { color: var(--text-2); font-weight: 500; }
@@ -532,9 +557,11 @@
         <div class="tk-body" id="sp-body"><div class="empty">Loading…</div></div>
       </div>
       <div class="card sessions">
-        <div class="label"><svg class="i"><use href="#i-term"/></svg>Claude Code <span class="count" data-count></span></div>
-        <div class="usage" id="usage" hidden></div>
-        <div class="slist" id="sessions"></div>
+        <div class="label"><svg class="i"><use href="#i-term"/></svg><span id="cc-title">Claude Code</span> <span class="count" data-count></span><span class="tk-dots cc-dots" id="cc-dots"></span></div>
+        <div class="cc-stage" id="cc-stage">
+          <div class="slist" id="sessions"></div>
+          <div class="cc-usage" id="cc-usage"></div>
+        </div>
       </div>
     </div>
     <div class="demo-tag"><span class="smp">sample data (?demo)</span><span class="off">server offline</span></div>
@@ -791,6 +818,7 @@
     const waiting = list.filter(s => s.state === 'waiting').length;
     $$('[data-count]').forEach(e => e.textContent = list.length ? (waiting ? `${waiting} waiting · ` : '') + list.length + ' active' : '');
     updateToast(list.filter(s => s.state === 'waiting'));
+    if (typeof ccCheck === 'function') ccCheck();
   }
 
   // ---------- Alerts ----------
@@ -1341,6 +1369,7 @@
     finR.schedule();
     spR.schedule(-baseMs() / 2);  // start half a step apart
     wxR.schedule(baseMs() / 3);
+    ccSchedule();
   }
   function drawRailMarkets() {
     const el = $('#rail-mk');
@@ -1728,17 +1757,84 @@
   const fmtTok = n => n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(n);
   const fmtDur = m => m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
   async function loadUsage() {
-    if (forceDemo) usage = { total: 41.2e6, output: 212e3, active_min: 96, sessions: 3, hourly: Array.from({ length: 24 }, (_, h) => h >= 9 && h <= 17 ? (h * 7919 % 13) * 1e6 : 0), projects: [{ name: 'sidescreen' }] };
+    if (forceDemo) usage = { total: 41.2e6, output: 212e3, active_min: 96, sessions: 3, hourly: Array.from({ length: 24 }, (_, h) => h >= 9 && h <= 17 ? (h * 7919 % 13 + 1) * 1e6 : 0),
+      projects: [{ name: 'sidescreen', total: 30e6 }, { name: 'api-gateway', total: 9e6 }, { name: 'blog', total: 2.2e6 }] };
     else try { usage = await getJSON('/api/usage'); } catch { return; }
-    const el = $('#usage');
-    if (!usage || !usage.total) { el.hidden = true; return; }
-    const max = Math.max(...usage.hourly, 1), hour = new Date().getHours();
-    const bars = usage.hourly.map((v, h) => `<i class="${h === hour ? 'now' : ''}" style="height:${v ? Math.max(8, v / max * 100) : 4}%" title="${h}:00 · ${fmtTok(v)}"></i>`).join('');
-    const top = (usage.projects || []).slice(0, 2).map(p => esc(p.name)).join(', ');
-    el.innerHTML = `<span>Today <b>${fmtTok(usage.total)}</b> tokens</span><span><b>${fmtTok(usage.output)}</b> out</span>
-      <span><b>${fmtDur(usage.active_min)}</b></span><span class="proj">${top}</span><span class="spark" title="Tokens per hour today">${bars}</span>`;
-    el.hidden = false;
+    drawUsage(); ccCheck();
   }
+  // Shows as much as fits in the space the session list takes: one line, then big numbers,
+  // then the hour-by-hour chart, then the busiest projects.
+  function drawUsage() {
+    const el = $('#cc-usage'), h = $('#cc-stage').clientHeight;
+    if (!usage || !usage.total) { el.innerHTML = ''; return; }
+    const hour = new Date().getHours(), max = Math.max(...usage.hourly, 1);
+    if (h < 90) {
+      el.innerHTML = `<div class="usage"><span>Today <b>${fmtTok(usage.total)}</b> tokens</span><span><b>${fmtTok(usage.output)}</b> out</span>
+        <span><b>${fmtDur(usage.active_min)}</b> active</span><span><b>${usage.sessions}</b> session${usage.sessions === 1 ? '' : 's'}</span></div>`;
+      return;
+    }
+    let html = `<div class="cc-stats"><div><b>${fmtTok(usage.total)}</b><span>Tokens</span></div><div><b>${fmtTok(usage.output)}</b><span>Output</span></div>
+      <div><b>${fmtDur(usage.active_min)}</b><span>Active</span></div><div><b>${usage.sessions}</b><span>Sessions</span></div></div>`;
+    let left = h - 62 - 16;
+    if (left >= 64) {
+      const ch = Math.min(110, left - 22 - (left >= 190 ? 0 : 0));
+      const projRoom = left - ch - 22 - 16;
+      const chartH = projRoom >= 60 ? Math.min(ch, 80) : ch;
+      html += `<div class="cc-chart"><div class="cc-bars" style="height:${chartH}px">${usage.hourly.map((v, i) =>
+        `<i class="${v ? '' : 'zero'}${i === hour ? ' now' : ''}" style="height:${v ? Math.max(6, v / max * 100) : 3}%" title="${String(i).padStart(2, '0')}:00 · ${fmtTok(v)}"></i>`).join('')}</div>
+        <div class="cc-hours"><span>00</span><span>06</span><span>12</span><span>18</span></div></div>`;
+      left -= chartH + 22 + 16;
+      const rows = Math.min((usage.projects || []).length, Math.floor(left / 28));
+      if (rows > 0) {
+        const top = usage.projects[0].total || 1;
+        html += `<div class="cc-proj">${usage.projects.slice(0, rows).map(p => `<span class="nm">${esc(p.name)}</span>
+          <span class="bar"><i style="width:${Math.max(2, p.total / top * 100)}%"></i></span><span class="v">${fmtTok(p.total)}</span>`).join('')}</div>`;
+      }
+    }
+    el.innerHTML = html;
+  }
+  // Rotation: sessions (a bit longer), then today's usage. Never leaves the sessions while one needs you.
+  let ccView = 'sessions', ccTimer = null;
+  const ccWaiting = () => (lastSessions || []).some(x => x.state === 'waiting');
+  const ccCanRotate = () => !!(usage && usage.total) && !ccWaiting();
+  function ccShow(view, animate = true) {
+    const card = $('#cc-stage').closest('.sessions');
+    if (view === ccView && card.classList.contains('show-usage') === (view === 'usage')) return;
+    ccView = view;
+    const apply = () => {
+      card.classList.toggle('show-usage', view === 'usage');
+      $('#cc-title').textContent = view === 'usage' ? 'Claude Code · Today' : 'Claude Code';
+      if (view === 'usage') drawUsage();
+      ccDots();
+    };
+    if (!animate) return apply();
+    card.classList.add('cc-fade');
+    setTimeout(() => { apply(); card.classList.remove('cc-fade'); }, 450);
+  }
+  function ccDots() {
+    $('#cc-dots').innerHTML = ccCanRotate() || ccView === 'usage' ? `<i class="${ccView === 'sessions' ? 'on' : ''}"></i><i class="${ccView === 'usage' ? 'on' : ''}"></i>` : '';
+  }
+  function ccSchedule() {
+    clearTimeout(ccTimer);
+    ccTimer = setTimeout(ccAuto, baseMs() * (ccView === 'sessions' ? 1.5 : 1));
+  }
+  function ccAuto() {
+    const since = Date.now() - lastSwitch;
+    if (since < 3000) { clearTimeout(ccTimer); ccTimer = setTimeout(ccAuto, 3000 - since); return; }
+    if (ccView === 'usage' || ccCanRotate()) { lastSwitch = Date.now(); ccShow(ccView === 'usage' ? 'sessions' : 'usage'); }
+    ccSchedule();
+  }
+  // Called when sessions or usage change: jump back to the sessions if one needs you.
+  function ccCheck() {
+    if (ccWaiting() && ccView === 'usage') ccShow('sessions');
+    else if (ccView === 'usage') drawUsage();  // the card may have grown or shrunk
+    ccDots();
+  }
+  $('#cc-stage').closest('.sessions').addEventListener('click', e => {
+    if (e.target.closest('button')) return;
+    if (ccView === 'usage') ccShow('sessions'); else if (ccCanRotate()) ccShow('usage');
+    ccSchedule();
+  });
 
   // ---------- Spotify ----------
   let sp = null, spPlayedAt = 0, spSig = '';
