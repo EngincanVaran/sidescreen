@@ -50,6 +50,7 @@ DEFAULT_CONFIG = {
     "football": ["eng.1", "tur.1", "esp.1", "uefa.champions", "uefa.europa", "uefa.europa.conf"],
     "tennis": ["atp", "wta"],
     "basketball": ["E", "U"],
+    "night_clock": "off",
     "news": [
         {"name": "World", "feeds": ["https://feeds.bbci.co.uk/news/world/rss.xml",
                                     "https://rss.dw.com/rdf/rss-en-world"]},
@@ -60,7 +61,7 @@ DEFAULT_CONFIG = {
     ],
     "rotate_seconds": 12,
 }
-PUBLIC_KEYS = ("location", "timezone", "locale", "hour12", "night_dim", "rotate_seconds", "kickoff_reminder_minutes", "goal_alerts")
+PUBLIC_KEYS = ("location", "timezone", "locale", "hour12", "night_dim", "night_clock", "rotate_seconds", "kickoff_reminder_minutes", "goal_alerts")
 STARTED = time.time()
 
 
@@ -254,6 +255,109 @@ def apply_event(s, event, p, now):
 
 
 SESSIONS = Sessions()
+
+
+# ---------------------------------------------------------------- Claude Code usage
+
+class Usage:
+    """Today's Claude Code token use, read from Claude Code's own transcripts (~/.claude/projects/**/*.jsonl).
+    Reads only files touched today, and only the part added since the last look."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._pos = {}    # file -> bytes already read
+        self._msgs = {}   # message id -> (time, project, session, input, cache write, cache read, output)
+        self._day = None
+        self._at = 0.0
+        self._cache = None
+
+    def get(self, cfg):
+        tz = ZoneInfo(cfg.get("timezone") or "UTC")
+        now = datetime.now(tz)
+        day = now.strftime("%Y-%m-%d")
+        with self._lock:
+            if day != self._day:
+                self._day, self._pos, self._msgs, self._cache = day, {}, {}, None
+            if self._cache is None or time.time() - self._at > 30:
+                start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                try:
+                    self._scan(start.timestamp())
+                except Exception as e:
+                    log(f"usage: {e}")
+                self._cache = self._summary(tz)
+                self._at = time.time()
+            return self._cache
+
+    def _scan(self, since):
+        root = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "projects"
+        if not root.is_dir():
+            return
+        for f in root.rglob("*.jsonl"):
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            if st.st_mtime < since:
+                continue
+            pos = self._pos.get(f, 0)
+            if st.st_size < pos:
+                pos = 0
+            if st.st_size == pos:
+                continue
+            with open(f, "rb") as fh:
+                fh.seek(pos)
+                data = fh.read()
+            end = data.rfind(b"\n") + 1  # leave a half-written last line for next time
+            self._pos[f] = pos + end
+            for line in data[:end].splitlines():
+                if b'"usage"' not in line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                m = d.get("message")
+                if not isinstance(m, dict) or not isinstance(m.get("usage"), dict):
+                    continue
+                t = parse_iso(d.get("timestamp") or "")
+                if t is None or t < since:
+                    continue
+                u = m["usage"]
+                n = lambda k: int(u.get(k) or 0)
+                # The same reply is logged once per content block: keep one copy per message id.
+                key = m.get("id") or d.get("requestId") or d.get("uuid")
+                project = Path(d.get("cwd") or "").name or f.parent.name
+                self._msgs[key] = (t, project, d.get("sessionId") or f.stem, n("input_tokens"),
+                                   n("cache_creation_input_tokens"), n("cache_read_input_tokens"), n("output_tokens"))
+
+    def _summary(self, tz):
+        tot = {"input": 0, "cache_write": 0, "cache_read": 0, "output": 0}
+        hourly = [0] * 24
+        projects, sessions = {}, {}
+        # A session belongs to the folder it started in (even after it cd's into a subfolder).
+        first = {}
+        for t, project, sess, *_ in self._msgs.values():
+            if sess not in first or t < first[sess][0]:
+                first[sess] = (t, project)
+        for t, _, sess, i, cw, cr, o in self._msgs.values():
+            project = first[sess][1]
+            tot["input"] += i; tot["cache_write"] += cw; tot["cache_read"] += cr; tot["output"] += o
+            all_ = i + cw + cr + o
+            hourly[datetime.fromtimestamp(t, tz).hour] += all_
+            p = projects.setdefault(project, {"name": project, "total": 0, "output": 0, "messages": 0})
+            p["total"] += all_; p["output"] += o; p["messages"] += 1
+            sessions.setdefault(sess, []).append(t)
+        # Active time: replies less than 5 minutes apart count as continuous work.
+        active = 0
+        for ts in sessions.values():
+            ts.sort()
+            active += sum(min(b - a, 300) for a, b in zip(ts, ts[1:]))
+        return {"date": self._day, "total": sum(tot.values()), **tot, "messages": len(self._msgs),
+                "sessions": len(sessions), "active_min": round(active / 60), "hourly": hourly,
+                "projects": sorted(projects.values(), key=lambda p: -p["total"])[:6]}
+
+
+USAGE = Usage()
 
 
 # ---------------------------------------------------------------- calendar
@@ -626,6 +730,7 @@ def fetch_tennis(tour):
                 for x in c.get("competitors") or []:
                     a = x.get("athlete") or {}
                     players.append({
+                        "id": str(a.get("id") or ""),
                         "name": a.get("shortName") or a.get("displayName") or "TBD",
                         "country": country(a),
                         "rank": (x.get("curatedRank") or {}).get("current"),
@@ -649,7 +754,7 @@ def fetch_rankings(tour):
     ranks = []
     for r in (rk.get("ranks") or [])[:20]:
         a = r.get("athlete") or {}
-        ranks.append({"rank": r.get("current"), "previous": r.get("previous"), "name": a.get("displayName") or "",
+        ranks.append({"rank": r.get("current"), "previous": r.get("previous"), "id": str(a.get("id") or ""), "name": a.get("displayName") or "",
                       "country": country(a), "points": r.get("points")})
     return {"updated": rk.get("update"), "ranks": ranks}
 
@@ -908,17 +1013,84 @@ def load_prefs():
         return {}
 
 
+# Settings the dashboard's settings panel may change (stored in prefs.json, layered over config.json).
+# Secrets (stock key, calendar links) and machine settings (port, display) are never editable from the page.
+SETTING_CHOICES = {
+    "football": ["tur.1", "eng.1", "esp.1", "ger.1", "ita.1", "fra.1", "uefa.champions", "uefa.europa", "uefa.europa.conf"],
+    "tennis": ["atp", "wta"],
+    "basketball": ["E", "U"],
+    "markets": ["USD", "EUR", "GBP", "GRA", "CEYREKALTIN", "CHF", "JPY"],
+    "crypto": ["bitcoin", "ethereum", "solana", "ripple", "dogecoin", "cardano"],
+}
+HHMM = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
+
+
+def clean_settings(d):
+    out = {}
+    if not isinstance(d, dict):
+        return out
+    loc = d.get("location")
+    if isinstance(loc, dict):
+        try:
+            lat, lon = float(loc.get("lat")), float(loc.get("lon"))
+            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                out["location"] = {"name": snippet(str(loc.get("name") or ""), 60), "lat": round(lat, 4), "lon": round(lon, 4)}
+        except (TypeError, ValueError):
+            pass
+    for key, lo, hi in (("rotate_seconds", 6, 60), ("kickoff_reminder_minutes", 0, 120)):
+        if isinstance(d.get(key), (int, float)) and not isinstance(d.get(key), bool):
+            out[key] = int(min(hi, max(lo, d[key])))
+    if d.get("goal_alerts") in ("followed", "all"):
+        out["goal_alerts"] = d["goal_alerts"]
+    if d.get("night_clock") in ("off", "auto"):
+        out["night_clock"] = d["night_clock"]
+    nd = d.get("night_dim")
+    if isinstance(nd, dict) and HHMM.fullmatch(str(nd.get("start") or "")) and HHMM.fullmatch(str(nd.get("end") or "")):
+        try:
+            out["night_dim"] = {"start": nd["start"], "end": nd["end"], "opacity": round(min(1.0, max(0.1, float(nd.get("opacity")))), 2)}
+        except (TypeError, ValueError):
+            pass
+    for key, allowed in SETTING_CHOICES.items():
+        if isinstance(d.get(key), list):
+            out[key] = [x for x in allowed if x in d[key]]  # keeps the canonical order
+    return out
+
+
+def effective_config(base):
+    """config.json with the settings panel's choices on top."""
+    cfg = dict(base)
+    cfg.update(clean_settings(load_prefs().get("settings") or {}))
+    return cfg
+
+
 def save_prefs(data):
-    follow = []
-    for t in (data.get("follow") or [])[:40]:
-        if isinstance(t, dict) and re.fullmatch(r"\d{1,9}", str(t.get("id") or "")):
-            follow.append({"id": str(t["id"]), "name": snippet(str(t.get("name") or ""), 60)})
-    prefs = {"follow": follow}
+    """Updates the parts of prefs.json that `data` contains: followed teams, players, settings."""
     with PREFS_LOCK:
+        prefs = load_prefs()
+        if "follow" in data:
+            follow = []
+            for t in (data.get("follow") or [])[:40]:
+                if isinstance(t, dict) and re.fullmatch(r"\d{1,9}", str(t.get("id") or "")):
+                    follow.append({"id": str(t["id"]), "name": snippet(str(t.get("name") or ""), 60)})
+            prefs["follow"] = follow
+        if "players" in data:
+            players = []
+            for t in (data.get("players") or [])[:30]:
+                if isinstance(t, dict) and re.fullmatch(r"\d{1,12}", str(t.get("id") or "")):
+                    players.append({"id": str(t["id"]), "name": snippet(str(t.get("name") or ""), 60),
+                                    "tour": "wta" if t.get("tour") == "wta" else "atp"})
+            prefs["players"] = players
+        if "settings" in data:
+            prefs["settings"] = clean_settings(data.get("settings"))
         tmp = PREFS_PATH.with_suffix(".tmp")
         tmp.write_text(json.dumps(prefs, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         os.replace(tmp, PREFS_PATH)
-    return prefs
+    return public_prefs()
+
+
+def public_prefs():
+    p = load_prefs()
+    return {"follow": p.get("follow") or [], "players": p.get("players") or [], "settings": clean_settings(p.get("settings") or {})}
 
 
 def fetch_fixtures(league, team_id):
@@ -1244,7 +1416,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._host_ok():
             return self._send(403)
         path = self.path.split("?")[0]
-        cfg = self.server.config
+        cfg = effective_config(self.server.config)
         if path == "/api/status":
             return self._json({"sessions": SESSIONS.snapshot(), "now": time.time(), "version": version()})
         if path == "/api/config":
@@ -1258,7 +1430,14 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/markets":
             return self._json(markets(cfg))
         if path == "/api/prefs":
-            return self._json({"follow": load_prefs().get("follow") or []})
+            return self._json(public_prefs())
+        if path == "/api/settings":
+            # Current values and the choices the settings panel offers.
+            return self._json({"values": {k: cfg.get(k) for k in ("location", "rotate_seconds", "kickoff_reminder_minutes",
+                                                                    "goal_alerts", "night_clock", "night_dim", *SETTING_CHOICES)},
+                               "choices": SETTING_CHOICES, "names": {**LEAGUE_NAMES, "atp": "ATP", "wta": "WTA", **BB_NAMES}})
+        if path == "/api/usage":
+            return self._json(USAGE.get(cfg))
         if path == "/api/myteams":
             return self._json(my_teams(cfg))
         if path == "/api/spotify":

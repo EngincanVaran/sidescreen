@@ -21,6 +21,8 @@ Ideas for Sidescreen, roughly in the order we plan to build them.
 
 ## Done
 
+- Claude Code usage line, follow tennis players, night clock, settings panel.
+
 - Basketball tab: EuroLeague and EuroCup games and standings.
 - Apple Calendar read directly through the Sidescreen Calendar helper app (EventKit), iCal links still supported.
 - Weather card rotates with reminders and agenda.

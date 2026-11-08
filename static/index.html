@@ -331,6 +331,61 @@
   .video:hover .float-ctl { opacity: 1; }
   .float-ctl .btn { height: 48px; padding: 0 18px; font-size: 16px; background: rgba(19,21,25,0.85); backdrop-filter: blur(10px); }
 
+  /* Claude Code usage line */
+  .usage { display: flex; align-items: center; gap: 14px; font-size: 15px; color: var(--muted); font-family: var(--mono); white-space: nowrap; min-width: 0; }
+  .usage b { color: var(--text-2); font-weight: 500; }
+  .usage .spark { display: flex; align-items: flex-end; gap: 2px; height: 18px; margin-left: auto; flex: none; }
+  .usage .spark i { width: 5px; border-radius: 1px; background: var(--working); opacity: .55; min-height: 1px; }
+  .usage .spark i.now { opacity: 1; }
+  .usage .proj { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+  /* Date-row buttons: night clock, settings */
+  .dr-btns { display: flex; gap: 10px; flex: none; }
+  .iconbtn { width: 60px; height: 60px; border-radius: 50%; border: 1px solid var(--border); background: var(--card); color: var(--text-2); display: grid; place-items: center; cursor: pointer; font-size: 24px; }
+  .iconbtn:hover { color: var(--text); border-color: var(--border-strong); }
+
+  /* Night clock */
+  #night { position: absolute; inset: 0; z-index: 30; background: #000; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 26px; color: #7C828C; cursor: pointer; }
+  body.night #night { display: flex; }
+  body.night #ambient, body.night #match { visibility: hidden; }
+  .nc-clock { font-size: 400px; font-weight: 200; letter-spacing: -0.06em; line-height: 0.85; color: #A3A9B2; font-variant-numeric: tabular-nums; }
+  .nc-date { font-size: 44px; color: #6A7079; }
+  .nc-row { display: flex; align-items: center; gap: 44px; font-size: 32px; margin-top: 18px; }
+  .nc-row > span { display: inline-flex; align-items: center; gap: 14px; }
+  .nc-row svg { font-size: 38px; stroke-width: 1.3; }
+  .nc-extra { display: flex; flex-direction: column; align-items: center; gap: 12px; font-size: 26px; font-family: var(--mono); }
+  .nc-extra .live { color: #B4585C; }
+  .nc-extra .wait { color: #A87B3E; }
+  .nc-hint { position: absolute; bottom: 44px; font-size: 18px; color: #3A3E45; }
+
+  /* Settings */
+  .st-box { width: 1500px; height: 920px; }
+  .st-box .pk-head .btn + .btn { margin-left: 0; }
+  .st-note { font-size: 15px; color: var(--muted); }
+  .st-grid, .pk-grid { scrollbar-width: thin; scrollbar-color: #2A2E36 transparent; }
+  .st-grid { flex: 1; min-height: 0; overflow: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 18px 40px; align-content: start; }
+  .st-sec { display: flex; flex-direction: column; gap: 12px; padding: 18px 0; border-top: 1px solid var(--border); }
+  .st-sec h3 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .st-sec p { margin: 0; font-size: 15px; color: var(--muted); }
+  .st-sec.wide { grid-column: 1 / -1; }
+  .st-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .st-row > span { font-size: 16px; color: var(--text-2); min-width: 120px; }
+  .seg { display: inline-flex; gap: 4px; padding: 3px; border-radius: 999px; background: #0F1114; border: 1px solid var(--border); flex-wrap: wrap; }
+  .seg button, .st-chip { height: 38px; padding: 0 16px; border-radius: 999px; border: 0; background: none; font-size: 15px; color: var(--muted); cursor: pointer; }
+  .seg button.on { background: #23272E; color: var(--text); }
+  .st-chip { border: 1px solid var(--border); }
+  .st-chip.on { color: var(--text); border-color: rgba(122,162,255,0.6); background: rgba(122,162,255,0.12); }
+  .st-in { height: 44px; padding: 0 16px; border-radius: 12px; border: 1px solid var(--border-strong); background: #0F1114; color: var(--text); font-size: 17px; font-family: inherit; color-scheme: dark; }
+  .st-loc { display: flex; flex-direction: column; gap: 6px; }
+  .st-loc button { text-align: left; height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--border); background: #15171C; color: var(--text-2); font-size: 15px; cursor: pointer; }
+  .st-loc button:hover { color: var(--text); border-color: var(--border-strong); }
+
+  /* Followed tennis players */
+  .tm .pl.me .nm { color: #fff; font-weight: 600; }
+  .tm.me { background: rgba(122,162,255,0.09); border-radius: 10px; padding-left: 8px; padding-right: 8px; margin-left: -8px; margin-right: -8px; }
+  .tbl tr.me td { color: var(--text); }
+  .pk-team small { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+
   /* Alerts: goals, kick-offs, reminders, Claude */
   #alerts { position: absolute; top: 28px; left: 960px; translate: -50% 0; width: 900px; z-index: 40; display: flex; flex-direction: column; align-items: center; gap: 12px; pointer-events: none; }
   body.match #alerts { left: 720px; }
@@ -399,6 +454,7 @@
     <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 6.5v11l8-5.5z"/><path d="M17.5 6v12"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
     <symbol id="i-resume" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
     <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></symbol>
     <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
@@ -438,6 +494,10 @@
           <button class="btn primary go" type="submit">Watch</button>
           <button type="button" class="cl" data-act="yt-close" title="Close"><svg class="i"><use href="#i-x"/></svg></button>
         </form>
+        <div class="dr-btns">
+          <button class="iconbtn" data-act="night" title="Night clock"><svg class="i"><use href="#i-moon"/></svg></button>
+          <button class="iconbtn" data-act="settings" title="Settings"><svg class="i"><use href="#i-gear"/></svg></button>
+        </div>
       </div>
 
       <div class="duo">
@@ -473,6 +533,7 @@
       </div>
       <div class="card sessions">
         <div class="label"><svg class="i"><use href="#i-term"/></svg>Claude Code <span class="count" data-count></span></div>
+        <div class="usage" id="usage" hidden></div>
         <div class="slist" id="sessions"></div>
       </div>
     </div>
@@ -516,17 +577,40 @@
     </aside>
   </section>
 
+  <section id="night" title="Tap to wake">
+    <div class="nc-clock" data-hm>--:--</div>
+    <div class="nc-date" data-date>&nbsp;</div>
+    <div class="nc-row">
+      <span><svg class="i" data-wx-icon><use href="#i-cloud"/></svg><span data-wx-temp>--°</span></span>
+      <span id="nc-next"></span>
+    </div>
+    <div class="nc-extra" id="nc-extra"></div>
+    <div class="nc-hint">Tap to wake</div>
+  </section>
+
   <div id="alerts"></div>
+
+  <div class="picker" id="settings" hidden>
+    <div class="card pk-box st-box">
+      <div class="pk-head">
+        <div class="label"><svg class="i"><use href="#i-gear"/></svg>Settings</div>
+        <span class="st-note">Saved on this Mac. Stock key and calendar links stay in config.json.</span>
+        <button class="btn" data-act="st-cancel">Cancel</button>
+        <button class="btn primary" data-act="st-save">Save</button>
+      </div>
+      <div class="st-grid" id="st-grid"></div>
+    </div>
+  </div>
 
   <div class="picker" id="picker" hidden>
     <div class="card pk-box">
       <div class="pk-head">
-        <div class="label"><svg class="i"><use href="#i-star"/></svg>Follow teams</div>
+        <div class="label"><svg class="i"><use href="#i-star"/></svg>Follow teams &amp; players</div>
         <div class="pk-tabs" id="pk-tabs"></div>
         <button class="btn primary" data-act="pk-done">Done</button>
       </div>
       <div class="pk-grid" id="pk-grid"></div>
-      <div class="pk-foot">Followed teams are highlighted, shown first, and get goal and kick-off alerts.</div>
+      <div class="pk-foot">Followed teams and players are highlighted, shown first, and get alerts. Once you follow a player, tennis alerts are for your players only.</div>
     </div>
   </div>
 </div>
@@ -592,6 +676,7 @@
       const night = a <= b ? (m >= a && m < b) : (m >= a || m < b);
       $('#dim').style.opacity = night ? String(1 - (nd.opacity ?? 0.45)) : '0';
     }
+    if (typeof updateNight === 'function') updateNight();
   }
 
   // ---------- Weather (Open-Meteo, no key) ----------
@@ -690,7 +775,9 @@
       <span class="detail${d.mono ? ' mono' : ''}">${esc(d.text)}</span>
     </div>`;
   }
+  let lastSessions = [];
   function renderSessions(list, emptyText = 'No active sessions') {
+    lastSessions = list;
     const nowSec = Date.now() / 1000;
     list = [...list].sort((a, b) => (ORDER[a.state] ?? 9) - (ORDER[b.state] ?? 9) || (b.updated || 0) - (a.updated || 0));
     const fill = (el, max) => {
@@ -1022,13 +1109,17 @@
     try { hoops = await getJSON('/api/basketball'); spR.draw(false); checkHoops(); } catch {}
   }
 
+  // Followed tennis players (by ESPN athlete id).
+  let players = [];
+  const followedP = id => !!id && players.some(p => p.id === String(id));
+  const mineTennis = m => m.players.some(p => followedP(p.id));
   function tennisMatches(tour) {
     const now = Date.now();
     let all = tour.tournaments.flatMap(tn => tn.matches.map(m => ({ ...m, lg: tn.name })))
       .filter(m => m.state === 'in' || (m.state === 'pre' && new Date(m.date) - now < 24 * 3600e3) || (m.state === 'post' && now - new Date(m.date) < 30 * 3600e3));
     const main = all.filter(m => !/^Q/.test(m.round));
     if (main.length) all = main;
-    const order = (a, b) => stateRank(a.state) - stateRank(b.state) ||
+    const order = (a, b) => (mineTennis(b) - mineTennis(a)) || stateRank(a.state) - stateRank(b.state) ||
       (a.state === 'post' ? new Date(b.date) - new Date(a.date) : new Date(a.date) - new Date(b.date));
     all.sort(order);
     const tOrder = [...new Set(all.map(m => m.lg))];
@@ -1037,16 +1128,16 @@
   function tennisRow(m) {
     const pl = (p, other) => {
       const sets = m.state === 'pre' ? '' : p.sets.map((g, i) => `<b class="${g > (other.sets[i] ?? -1) ? 'w' : ''}">${g}</b>`).join('');
-      return `<div class="pl${p.winner ? ' win' : ''}"><span class="nm">${esc(p.name)}${p.rank ? `<i>${p.rank}</i>` : ''}</span><span class="sets">${sets}</span></div>`;
+      return `<div class="pl${p.winner ? ' win' : ''}${followedP(p.id) ? ' me' : ''}"><span class="nm">${esc(p.name)}${p.rank ? `<i>${p.rank}</i>` : ''}</span><span class="sets">${sets}</span></div>`;
     };
     const [a, b] = m.players;
     const right = m.state === 'pre' ? `<span class="when">${isToday(m.date) ? '' : 'Tmrw '}${fmtTime.format(new Date(m.date))}</span>` : '';
-    return `<div class="tm fr ${m.state === 'in' ? 'live' : esc(m.state)}"><span class="rd">${esc(m.round)}</span>${right}${pl(a, b)}${pl(b, a)}</div>`;
+    return `<div class="tm fr ${m.state === 'in' ? 'live' : esc(m.state)}${mineTennis(m) ? ' me' : ''}"><span class="rd">${esc(m.round)}</span>${right}${pl(a, b)}${pl(b, a)}</div>`;
   }
   function rankingsHTML(tour) {
     const row = r => {
       const mv = r.previous ? r.previous - r.rank : 0;
-      return `<tr class="fr"><td class="r">${r.rank}</td><td class="t">${esc(r.name)}</td><td>${nf(r.points, 0)}</td>
+      return `<tr class="fr${followedP(r.id) ? ' me' : ''}"><td class="r">${r.rank}</td><td class="t">${followedP(r.id) ? `<b>${esc(r.name)}</b>` : esc(r.name)}</td><td>${nf(r.points, 0)}</td>
         <td class="${mv > 0 ? 'up' : mv < 0 ? 'down' : 'flat'}">${mv > 0 ? '+' + mv : mv < 0 ? mv : '–'}</td></tr>`;
     };
     return `<table class="tbl"><colgroup><col class="r"><col><col class="pp"><col class="mv"></colgroup>
@@ -1364,7 +1455,9 @@
       const cur = { state: m.state, sets: a.sets.length };
       const prev = tennisPrev.get(m.id);
       tennisPrev.set(m.id, cur);
-      const watch = cfg.goal_alerts === 'all' || [a, b].some(p => p.rank && p.rank <= 10) || /^(QF|SF|F)$/.test(m.round || '');
+      // Your players only, once you follow any; otherwise top-10 players and quarter-finals on.
+      const watch = cfg.goal_alerts === 'all' || (players.length ? mineTennis(m)
+        : [a, b].some(p => p.rank && p.rank <= 10) || /^(QF|SF|F)$/.test(m.round || ''));
       if (!tennisPrimed || !prev || !watch) continue;
       const names = `${a.name} – ${b.name}`, tag = `${m.tour} · ${m.lg}${m.round ? ' · ' + m.round : ''}`;
       const score = upto => a.sets.slice(0, upto).map((g, i) => `${g}–${b.sets[i] ?? 0}`).join(', ');
@@ -1426,9 +1519,24 @@
   let pkLeague = null, saveTimer = null;
   function drawPicker() {
     const leagues = (footy ? footy.leagues : []).filter(l => l.table.length);
-    if (!leagues.length) { $('#pk-grid').innerHTML = '<div class="empty">Loading teams…</div>'; return; }
-    if (!leagues.some(l => l.id === pkLeague)) pkLeague = leagues[0].id;
-    $('#pk-tabs').innerHTML = leagues.map(l => `<button class="pk-tab${l.id === pkLeague ? ' on' : ''}" data-lg="${esc(l.id)}">${l.logo ? logoImg(l.logo, '') : ''}${esc(l.name)}</button>`).join('');
+    const tours = (tennis ? tennis.tours : []).filter(t => t.rankings.length);
+    const tabs = [...leagues.map(l => ({ id: l.id, html: `${l.logo ? logoImg(l.logo, '') : ''}${esc(l.name)}` })),
+      ...tours.map(t => ({ id: 'tour:' + t.id, html: `${use('tennis')}${esc(t.name)} players` }))];
+    if (!tabs.length) { $('#pk-grid').innerHTML = '<div class="empty">Loading…</div>'; return; }
+    if (!tabs.some(t => t.id === pkLeague)) pkLeague = tabs[0].id;
+    $('#pk-tabs').innerHTML = tabs.map(t => `<button class="pk-tab${t.id === pkLeague ? ' on' : ''}" data-lg="${esc(t.id)}">${t.html}</button>`).join('');
+    if (pkLeague.startsWith('tour:')) {
+      const t = tours.find(x => 'tour:' + x.id === pkLeague);
+      // Top 20 plus anyone playing this week, best ranked first; your players always listed.
+      const seen = new Map();
+      t.rankings.forEach(r => r.id && seen.set(r.id, { id: r.id, name: r.name, rank: r.rank }));
+      t.tournaments.forEach(tn => tn.matches.forEach(m => m.players.forEach(p => p.id && !seen.has(p.id) && seen.set(p.id, { id: p.id, name: p.name, rank: p.rank }))));
+      players.filter(p => p.tour === t.id && !seen.has(p.id)).forEach(p => seen.set(p.id, { id: p.id, name: p.name, rank: null }));
+      const list = [...seen.values()].sort((a, b) => (a.rank || 999) - (b.rank || 999));
+      $('#pk-grid').innerHTML = list.map(p => `<button class="pk-team${followedP(p.id) ? ' on' : ''}" data-player="${esc(p.id)}" data-name="${esc(p.name)}" data-tour="${esc(t.id)}">
+        <small>${p.rank ? '#' + p.rank : ''}</small><span class="nm">${esc(p.name)}</span>${use('star')}</button>`).join('');
+      return;
+    }
     const lg = leagues.find(l => l.id === pkLeague);
     $('#pk-grid').innerHTML = [...lg.table].sort((a, b) => a.team.localeCompare(b.team)).map(r => `<button class="pk-team${followed(r.id) ? ' on' : ''}" data-team="${esc(r.id)}" data-name="${esc(r.full || r.team)}">
       ${r.logo ? logoImg(r.logo, '') : ''}<span class="nm">${esc(r.full || r.team)}</span>${use('star')}</button>`).join('');
@@ -1440,22 +1548,31 @@
     const tab = e.target.closest('.pk-tab');
     if (tab) { pkLeague = tab.dataset.lg; return drawPicker(); }
     const b = e.target.closest('.pk-team'); if (!b) return;
-    const id = b.dataset.team;
-    follow = followed(id) ? follow.filter(t => t.id !== id) : [...follow, { id, name: b.dataset.name }];
-    b.classList.toggle('on', followed(id));
+    if (b.dataset.player) {
+      const id = b.dataset.player;
+      players = followedP(id) ? players.filter(p => p.id !== id) : [...players, { id, name: b.dataset.name, tour: b.dataset.tour }];
+      b.classList.toggle('on', followedP(id));
+    } else {
+      const id = b.dataset.team;
+      follow = followed(id) ? follow.filter(t => t.id !== id) : [...follow, { id, name: b.dataset.name }];
+      b.classList.toggle('on', followed(id));
+    }
     updateStar();
     clearTimeout(saveTimer); saveTimer = setTimeout(savePrefs, 500);
   });
-  const updateStar = () => $('#sp-star').classList.toggle('on', follow.length > 0);
+  const updateStar = () => $('#sp-star').classList.toggle('on', follow.length > 0 || players.length > 0);
   async function loadPrefs() {
-    try { follow = forceDemo ? [{ id: '432', name: 'Galatasaray' }] : ((await getJSON('/api/prefs')).follow || []); } catch {}
+    try {
+      const pr = forceDemo ? { follow: [{ id: '432', name: 'Galatasaray' }], players: [] } : await getJSON('/api/prefs');
+      follow = pr.follow || []; players = pr.players || [];
+    } catch {}
     updateStar();
   }
   async function savePrefs() {
     if (!forceDemo) {
       try {
-        const r = await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ follow }) });
-        if (r.ok) follow = (await r.json()).follow || follow;
+        const r = await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ follow, players }) });
+        if (r.ok) { const pr = await r.json(); follow = pr.follow || follow; players = pr.players || players; }
       } catch {}
     }
     spR.draw(false); drawRailScores(); loadMyTeams();
@@ -1606,6 +1723,23 @@
     try { cal = forceDemo ? demoCalendar() : await getJSON('/api/calendar'); wxR.draw(false); renderNext(); } catch {}
   }
 
+  // ---------- Claude Code usage (today) ----------
+  let usage = null;
+  const fmtTok = n => n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(n);
+  const fmtDur = m => m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`;
+  async function loadUsage() {
+    if (forceDemo) usage = { total: 41.2e6, output: 212e3, active_min: 96, sessions: 3, hourly: Array.from({ length: 24 }, (_, h) => h >= 9 && h <= 17 ? (h * 7919 % 13) * 1e6 : 0), projects: [{ name: 'sidescreen' }] };
+    else try { usage = await getJSON('/api/usage'); } catch { return; }
+    const el = $('#usage');
+    if (!usage || !usage.total) { el.hidden = true; return; }
+    const max = Math.max(...usage.hourly, 1), hour = new Date().getHours();
+    const bars = usage.hourly.map((v, h) => `<i class="${h === hour ? 'now' : ''}" style="height:${v ? Math.max(8, v / max * 100) : 4}%" title="${h}:00 · ${fmtTok(v)}"></i>`).join('');
+    const top = (usage.projects || []).slice(0, 2).map(p => esc(p.name)).join(', ');
+    el.innerHTML = `<span>Today <b>${fmtTok(usage.total)}</b> tokens</span><span><b>${fmtTok(usage.output)}</b> out</span>
+      <span><b>${fmtDur(usage.active_min)}</b></span><span class="proj">${top}</span><span class="spark" title="Tokens per hour today">${bars}</span>`;
+    el.hidden = false;
+  }
+
   // ---------- Spotify ----------
   let sp = null, spPlayedAt = 0, spSig = '';
   async function loadSpotify() {
@@ -1649,6 +1783,119 @@
       if (r.ok) { sp = await r.json(); drawSpotify(); }
     } catch {}
   }
+
+  // ---------- Night clock ----------
+  // On when you tap the moon button, or (with night_clock "auto") during the night-dim hours.
+  // Tapping it wakes the dashboard; in auto mode it comes back after 15 minutes.
+  let nightManual = !!store.get('night'), nightSnoozeUntil = 0, lastNightDraw = 0;
+  const inNightHours = () => {
+    const nd = cfg.night_dim; if (!nd || !nd.start || !nd.end) return false;
+    const m = toMin(fmtMins.format(new Date())), a = toMin(nd.start), b = toMin(nd.end);
+    return a <= b ? (m >= a && m < b) : (m >= a || m < b);
+  };
+  function updateNight() {
+    const auto = cfg.night_clock === 'auto' && inNightHours() && Date.now() > nightSnoozeUntil;
+    const on = !document.body.classList.contains('match') && (nightManual || auto);
+    const was = document.body.classList.contains('night');
+    document.body.classList.toggle('night', on);
+    if (on && (!was || Date.now() - lastNightDraw > 20e3)) drawNight();
+  }
+  function drawNight() {
+    lastNightDraw = Date.now();
+    const now = Date.now();
+    // Next: calendar event or your team's next match, whichever is sooner.
+    const cands = [];
+    const ev = calEvents().find(e => !e.all_day && e.s.getTime() > now);
+    if (ev) cands.push({ t: ev.s.getTime(), txt: ev.title });
+    if (myteams) myteams.teams.forEach(t => t.next && new Date(t.next.date) > now && cands.push({ t: new Date(t.next.date).getTime(), txt: `${t.next.home.team} – ${t.next.away.team}` }));
+    const nx = cands.sort((a, b) => a.t - b.t)[0];
+    const when = t => { const d = new Date(t); return (isToday(d) ? '' : fmtShortDay().format(d).split(' ')[0] + ' ') + fmtTime.format(d); };
+    $('#nc-next').textContent = nx ? `${when(nx.t)}  ${nx.txt}` : '';
+    const lines = [];
+    if (footy) footballToday().filter(m => m.state === 'in' && mineMatch(m)).forEach(m =>
+      lines.push(`<span class="live">${esc(m.home.team)} ${esc(m.home.score)} – ${esc(m.away.score)} ${esc(m.away.team)} · ${esc(m.detail)}</span>`));
+    const waiting = (lastSessions || []).filter(x => x.state === 'waiting').length;
+    if (waiting) lines.push(`<span class="wait">${waiting === 1 ? 'A Claude session needs you' : waiting + ' Claude sessions need you'}</span>`);
+    $('#nc-extra').innerHTML = lines.join('');
+  }
+  $('#night').addEventListener('click', () => {
+    nightManual = false; store.set('night', false);
+    if (cfg.night_clock === 'auto' && inNightHours()) nightSnoozeUntil = Date.now() + 15 * 60e3;
+    updateNight();
+  });
+
+  // ---------- Settings ----------
+  let stDraft = null, stMeta = null, stResults = [];
+  async function openSettings() {
+    try { stMeta = await getJSON('/api/settings'); } catch { return; }
+    stDraft = JSON.parse(JSON.stringify(stMeta.values));
+    stDraft.night_dim = stDraft.night_dim || { start: '00:30', end: '07:30', opacity: 0.45 };
+    stResults = [];
+    drawSettings();
+    $('#settings').hidden = false;
+  }
+  const closeSettings = () => { $('#settings').hidden = true; };
+  function drawSettings() {
+    const d = stDraft, names = stMeta.names;
+    const seg = (key, opts) => `<div class="seg">${opts.map(([v, l]) => `<button data-set="${key}" data-val='${JSON.stringify(v)}' class="${JSON.stringify(getPath(d, key)) === JSON.stringify(v) ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+    const chips = (key, label = x => names[x] || x) => `<div class="st-row">${stMeta.choices[key].map(v =>
+      `<button class="st-chip${(d[key] || []).includes(v) ? ' on' : ''}" data-multi="${key}" data-val="${esc(v)}">${esc(label(v))}</button>`).join('')}</div>`;
+    const crypto = x => x[0].toUpperCase() + x.slice(1);
+    const mk = x => ({ GRA: 'Gram gold', CEYREKALTIN: 'Quarter gold' }[x] || x);
+    $('#st-grid').innerHTML = `
+      <div class="st-sec"><h3>Weather location</h3>
+        <p>Now: ${esc((d.location && d.location.name) || '—')}</p>
+        <div class="st-row"><input class="st-in" id="st-city" placeholder="Search a city" spellcheck="false"><button class="btn" data-act="st-find" style="height:44px">Search</button></div>
+        <div class="st-loc">${stResults.map((r, i) => `<button data-loc="${i}">${esc(r.label)}</button>`).join('')}</div></div>
+      <div class="st-sec"><h3>Rotation</h3><p>How long each panel stays up (tables and news a bit longer).</p>
+        ${seg('rotate_seconds', [8, 10, 12, 15, 20, 30].map(v => [v, v + ' s']))}</div>
+      <div class="st-sec"><h3>Alerts</h3>
+        <div class="st-row"><span>Live games</span>${seg('goal_alerts', [['followed', 'Teams &amp; players I follow'], ['all', 'Every game']])}</div>
+        <div class="st-row"><span>Before kick-off</span>${seg('kickoff_reminder_minutes', [[0, 'Off'], [5, '5 min'], [10, '10 min'], [15, '15 min'], [30, '30 min'], [60, '1 h']])}</div></div>
+      <div class="st-sec"><h3>Night</h3>
+        <div class="st-row"><span>Night hours</span><input type="time" class="st-in" data-time="night_dim.start" value="${esc(d.night_dim.start)}"> to <input type="time" class="st-in" data-time="night_dim.end" value="${esc(d.night_dim.end)}"></div>
+        <div class="st-row"><span>Brightness</span>${seg('night_dim.opacity', [[0.3, '30%'], [0.45, '45%'], [0.6, '60%'], [0.8, '80%'], [1, 'No dimming']])}</div>
+        <div class="st-row"><span>Night clock</span>${seg('night_clock', [['off', 'Only with the moon button'], ['auto', 'Automatically at night']])}</div></div>
+      <div class="st-sec wide"><h3>Football</h3>${chips('football')}</div>
+      <div class="st-sec"><h3>Basketball</h3>${chips('basketball')}</div>
+      <div class="st-sec"><h3>Tennis</h3>${chips('tennis')}</div>
+      <div class="st-sec"><h3>Rates</h3>${chips('markets', mk)}</div>
+      <div class="st-sec"><h3>Crypto</h3>${chips('crypto', crypto)}</div>`;
+  }
+  function getPath(o, path) { return path.split('.').reduce((x, k) => x && x[k], o); }
+  function setPath(o, path, v) { const ks = path.split('.'), last = ks.pop(); ks.reduce((x, k) => (x[k] = x[k] || {}), o)[last] = v; }
+  async function findCity() {
+    const q = $('#st-city').value.trim(); if (!q) return;
+    try {
+      const r = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=6&language=en&name=${encodeURIComponent(q)}`)).json();
+      stResults = (r.results || []).map(x => ({ name: x.name, lat: x.latitude, lon: x.longitude, label: [x.name, x.admin1, x.country].filter(Boolean).join(', ') }));
+      if (!stResults.length) stResults = [];
+    } catch { stResults = []; }
+    drawSettings(); $('#st-city').value = q;
+  }
+  async function saveSettings() {
+    try {
+      const r = await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ settings: stDraft }) });
+      if (!r.ok) throw new Error(r.status);
+    } catch { $('.st-note').textContent = 'Could not save. Is the server running?'; return; }
+    location.reload();  // simplest way to apply everything (sources, timings, alerts)
+  }
+  $('#settings').addEventListener('click', e => {
+    if (e.target.id === 'settings') return closeSettings();
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.set) { setPath(stDraft, b.dataset.set, JSON.parse(b.dataset.val)); return drawSettings(); }
+    if (b.dataset.multi) {
+      const k = b.dataset.multi, v = b.dataset.val, cur = stDraft[k] || [];
+      stDraft[k] = cur.includes(v) ? cur.filter(x => x !== v) : [...cur, v];
+      return drawSettings();
+    }
+    if (b.dataset.loc) { const r = stResults[+b.dataset.loc]; stDraft.location = { name: r.name, lat: r.lat, lon: r.lon }; stResults = []; return drawSettings(); }
+    if (b.dataset.act === 'st-find') return findCity();
+    if (b.dataset.act === 'st-save') return saveSettings();
+    if (b.dataset.act === 'st-cancel') return closeSettings();
+  });
+  $('#settings').addEventListener('change', e => { if (e.target.dataset.time) setPath(stDraft, e.target.dataset.time, e.target.value); });
+  $('#settings').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'st-city') findCity(); });
 
   // ---------- YouTube / match mode ----------
   function parseYouTube(input) {
@@ -1705,11 +1952,15 @@
     if (a === 'yt-open') ytOpen();
     if (a === 'yt-close') ytClose();
     if (a === 'picker') openPicker();
+    if (a === 'settings') openSettings();
+    if (a === 'night') { nightManual = true; store.set('night', true); updateNight(); }
     if (a === 'pk-done') closePicker();
   });
   addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     if (!$('#picker').hidden) return closePicker();
+    if (!$('#settings').hidden) return closeSettings();
+    if (document.body.classList.contains('night')) return $('#night').click();
     if (document.body.classList.contains('match')) exitMatch();
   });
 
@@ -1726,6 +1977,7 @@
     setInterval(loadMyTeams, 10 * 60e3); setInterval(loadReminders, 60e3);
     setInterval(() => { checkKickoffs(); checkReminders(); }, 30e3);
     setInterval(renderNext, 60e3);
+    loadUsage(); setInterval(loadUsage, 60e3);
     loadSpotify(); setInterval(loadSpotify, 2000); setInterval(spProgress, 1000);
     startRotation();
     const saved = store.get('video');
