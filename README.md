@@ -4,7 +4,7 @@ An always-on information dashboard for the Mac mini's portable display (1920×10
 
 **Ambient mode**
 - Clock, date, and a **weather card** with a 7-day forecast that takes turns with your Apple Reminders and agenda, a **Spotify** pill (cover, track, artist, progress, previous / play-pause / next) that appears while the Spotify app plays and folds away 2 minutes after you pause, and a small **YouTube** button that expands into a link box (or just paste a YouTube link anywhere on the dashboard).
-- **Info card** (rotates): TL rates and gram gold with 30-day trend lines, crypto (and stocks, with a key), World news and Türkiye news.
+- **Info card** (rotates): TL rates and gram gold with 30-day trend lines, crypto (and stocks, with a key), World news, Türkiye news, and **AI**: AI news (Hugging Face, OpenAI, DeepMind, MIT Tech Review, The Verge, TechCrunch, Simon Willison), models trending on Hugging Face (likes, downloads, task), and Hugging Face's papers of the day (upvotes, organisation, first sentence of the abstract). Joke and uncensored fine-tunes are left out of the trending list.
 - **Sports card** (rotates, with Football / Basketball / Tennis tabs): your teams, today's football with live scores, league tables (Süper Lig, Premier League, La Liga, Bundesliga, Serie A, Ligue 1, Champions League, Europa League, Conference League), EuroLeague and EuroCup games and standings (clubs you follow in football are highlighted in basketball too), ATP/WTA matches and rankings. Competition logos, and a red LIVE badge when something is being played.
 - **Follow teams and tennis players** with the star button on the sports card (ATP / WTA players tabs for tennis). Followed teams are highlighted in tables and matches, shown first, and get a "Your teams" panel with their position and next fixture. Followed players are highlighted in matches and rankings, and once you follow any, tennis alerts are for them only.
 - **Alerts** at the top of the screen (also over a video). Click one to dismiss it. At most 4 show at once; goals stay longest.
@@ -119,6 +119,7 @@ Other Turkish feeds that work: `https://www.hurriyet.com.tr/rss/gundem`, `https:
   - `GET /api/spotify`, `POST /api/spotify` (`{"cmd": "playpause" | "next" | "previous"}`, same rules as prefs): what Spotify is playing, and its controls.
   - `GET /api/myteams`, `/api/reminders`: followed teams' positions and next fixtures; Apple Reminders (read in the background every 3 minutes).
   - `GET /api/usage`: today's Claude Code token use.
+  - `GET /api/ai`: trending Hugging Face models (every 30 min) and papers of the day (hourly).
   - `GET /api/settings`: what the settings panel can change, and the current values.
   - `GET`/`POST /api/prefs`: followed teams and players, and settings, saved to `prefs.json`. Writes are only accepted as JSON from the dashboard's own address.
   - `GET /api/config`: public settings only.
@@ -128,4 +129,4 @@ Other Turkish feeds that work: `https://www.hurriyet.com.tr/rss/gundem`, `https:
 - `scripts/reminders.js`, `scripts/spotify.js`: read Reminders and Spotify
 - `scripts/calendar-helper/`: the Sidescreen Calendar helper app (Swift, EventKit) that reads your calendars (JavaScript for Automation, run with `osascript`).
 
-Data sources (no API keys): [Open-Meteo](https://open-meteo.com) for weather, [Truncgil Finans](https://finans.truncgil.com) for TL rates and gold, [Frankfurter](https://frankfurter.dev) (ECB) for 30-day currency trends, [CoinGecko](https://www.coingecko.com) for crypto and the gold trend (PAX Gold, one token per troy ounce, as a stand-in), ESPN's public site API for football, tennis and logos, the official EuroLeague API for basketball, and publishers' RSS feeds for news. Stocks use Twelve Data with your key. Truncgil and ESPN are unofficial and could change without notice.
+Data sources (no API keys): [Open-Meteo](https://open-meteo.com) for weather, [Truncgil Finans](https://finans.truncgil.com) for TL rates and gold, [Frankfurter](https://frankfurter.dev) (ECB) for 30-day currency trends, [CoinGecko](https://www.coingecko.com) for crypto and the gold trend (PAX Gold, one token per troy ounce, as a stand-in), ESPN's public site API for football, tennis and logos, the official EuroLeague API for basketball, the Hugging Face API for trending models and daily papers, and publishers' RSS feeds for news. Stocks use Twelve Data with your key. Truncgil and ESPN are unofficial and could change without notice.

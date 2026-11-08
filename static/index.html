@@ -480,6 +480,9 @@
     <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
     <symbol id="i-resume" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></symbol>
     <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.6L19.5 10.5l-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></symbol>
+    <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></symbol>
+    <symbol id="i-paper" viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M9.5 12h6M9.5 15.5h6"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
     <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></symbol>
     <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
@@ -961,7 +964,7 @@
     const key = 'nw:' + i, items = g.items.slice(0, 12);
     const st = newsCursor[key] || (newsCursor[key] = { start: 0, next: 0 });
     return {
-      key, label: g.name, icon: i === 0 ? 'globe' : 'news', weight: 1.25,
+      key, label: g.name, icon: /^ai\b/i.test(g.name) ? 'spark' : i === 0 ? 'globe' : 'news', weight: 1.25,
       html: fresh => {
         if (fresh) st.start = st.next >= items.length ? 0 : st.next;
         return items.slice(st.start, st.start + 4).map(n => `<div class="nw fr">
@@ -1011,7 +1014,29 @@
     if (markets && ((markets.crypto || []).length || (markets.stocks || []).length))
       p.push({ key: 'cs', label: (markets.stocks || []).length ? 'Crypto & stocks' : 'Crypto', icon: 'coin', html: cryptoStocksHTML });
     if (news) news.groups.forEach((g, i) => { if (g.items.length) p.push(newsPanel(g, i)); });
+    if (ai && ai.models.length) p.push(pagedPanel('hf:m', 'Trending on Hugging Face', 'cube', ai.models, 5, modelRow));
+    if (ai && ai.papers.length) p.push(pagedPanel('hf:p', 'Papers of the day', 'paper', ai.papers, 4, paperRow));
     return p;
+  }
+
+  // ---------- AI: Hugging Face trending models and daily papers ----------
+  let ai = null;
+  async function loadAI() {
+    if (forceDemo) return;
+    try { ai = await getJSON('/api/ai'); finR.draw(false); } catch {}
+  }
+  const fmtCount = n => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + 'K' : String(n);
+  const modelRow = m => `<div class="nw fr"><div class="meta">${esc(m.author || 'Hugging Face')}${m.task ? ' · ' + esc(m.task) : ''}${m.created ? ' · ' + agoShort(Date.parse(m.created) / 1000) : ''}</div>
+    <div class="hd">${esc(m.name)}</div><div class="sm">${fmtCount(m.likes)} likes · ${fmtCount(m.downloads)} downloads</div></div>`;
+  const paperRow = p => `<div class="nw fr"><div class="meta">▲ ${p.upvotes}${p.org ? ' · ' + esc(p.org) : ''}</div>
+    <div class="hd">${esc(p.title)}</div>${p.summary ? `<div class="sm">${esc(p.summary)}</div>` : ''}</div>`;
+  // A list shown a page at a time, continuing where it left off each round (like the news).
+  const pageCursor = {};
+  function pagedPanel(key, label, icon, items, per, row) {
+    const st = pageCursor[key] || (pageCursor[key] = { start: 0, next: 0 });
+    return { key, label, icon, weight: 1.25,
+      html: fresh => { if (fresh) st.start = st.next >= items.length ? 0 : st.next; return items.slice(st.start, st.start + per).map(row).join(''); },
+      after: body => { st.next = st.start + Math.max(1, body.querySelectorAll('.nw').length); } };
   }
 
   // ---------- Sports card panels ----------
@@ -2074,6 +2099,7 @@
     setInterval(() => { checkKickoffs(); checkReminders(); }, 30e3);
     setInterval(renderNext, 60e3);
     loadUsage(); setInterval(loadUsage, 60e3);
+    loadAI(); setInterval(loadAI, 15 * 60e3);
     loadSpotify(); setInterval(loadSpotify, 2000); setInterval(spProgress, 1000);
     startRotation();
     const saved = store.get('video');

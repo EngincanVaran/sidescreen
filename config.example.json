@@ -35,6 +35,18 @@
         "https://rss.dw.com/rdf/rss-tur-all"
       ],
       "exclude": ["deprem mi oldu"]
+    },
+    {
+      "name": "AI",
+      "feeds": [
+        "https://huggingface.co/blog/feed.xml",
+        "https://openai.com/news/rss.xml",
+        "https://deepmind.google/blog/rss.xml",
+        "https://www.technologyreview.com/topic/artificial-intelligence/feed",
+        "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+        "https://techcrunch.com/category/artificial-intelligence/feed/",
+        "https://simonwillison.net/tags/ai.atom"
+      ]
     }
   ],
 

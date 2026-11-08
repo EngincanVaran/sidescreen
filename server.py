@@ -6,6 +6,7 @@ Claude Code sessions from HTTP hook events. Calendar support is optional and
 needs `icalendar` + `recurring-ical-events`.
 """
 
+import gzip
 import json
 import math
 import os
@@ -778,6 +779,56 @@ def tennis(tours):
 
 
 
+# ---------------------------------------------------------------- AI: Hugging Face trending models and daily papers
+
+HF = "https://huggingface.co/api"
+# Trending lists pick up joke and uncensored fine-tunes; these words keep the list on real releases.
+HF_SKIP = re.compile(r"uncensored|abliterat|heretic|nsfw|erotic|porn|jailbreak", re.I)
+
+
+def fetch_hf_models():
+    out = []
+    for m in get_json(f"{HF}/models?sort=trendingScore&limit=40", timeout=15):
+        mid = m.get("id") or m.get("modelId") or ""
+        if not mid or HF_SKIP.search(mid) or any(HF_SKIP.search(t) for t in m.get("tags") or []):
+            continue
+        author, _, name = mid.partition("/")
+        out.append({"id": mid, "author": author if name else "", "name": name or mid, "likes": m.get("likes") or 0,
+                    "downloads": m.get("downloads") or 0, "task": (m.get("pipeline_tag") or "").replace("-", " "),
+                    "created": m.get("createdAt")})
+        if len(out) >= 15:
+            break
+    return out
+
+
+def fetch_hf_papers():
+    out = []
+    for d in get_json(f"{HF}/daily_papers?limit=30", timeout=15):
+        p = d.get("paper") or {}
+        title = clean(p.get("title") or d.get("title"), 200)
+        if not title:
+            continue
+        summary = clean(p.get("ai_summary") or p.get("summary") or d.get("summary"), 400)
+        # The abstract's first sentence or two is enough for a glance.
+        m = re.match(r"(.{60,240}?[.!?])(\s|$)", summary or "")
+        org = (p.get("organization") or d.get("organization") or {})
+        out.append({"id": p.get("id") or "", "title": title, "summary": m.group(1) if m else (summary or "")[:220],
+                    "upvotes": p.get("upvotes") or 0, "org": (org.get("fullname") or org.get("name") or "") if isinstance(org, dict) else "",
+                    "published": d.get("publishedAt") or p.get("publishedAt")})
+    out.sort(key=lambda x: -x["upvotes"])
+    return out[:15]
+
+
+def ai_feed():
+    out = {"models": [], "papers": []}
+    for key, ttl, fn in (("models", 1800, fetch_hf_models), ("papers", 3600, fetch_hf_papers)):
+        try:
+            out[key] = CACHE.get(f"hf:{key}", ttl, fn)
+        except Exception as e:
+            log(f"hugging face {key}: {e}")
+    return out
+
+
 # ---------------------------------------------------------------- basketball (EuroLeague / EuroCup)
 
 EL_API = "https://api-live.euroleague.net/v2"
@@ -904,7 +955,10 @@ def basketball(comps):
 # ---------------------------------------------------------------- news (RSS / Atom)
 
 SOURCE_NAMES = {"bbc": "BBC", "bbci": "BBC", "dw": "DW", "ntv": "NTV", "hurriyet": "Hürriyet", "aa": "AA",
-                "trthaber": "TRT Haber", "sozcu": "Sözcü", "theguardian": "Guardian", "reuters": "Reuters"}
+                "trthaber": "TRT Haber", "sozcu": "Sözcü", "theguardian": "Guardian", "reuters": "Reuters",
+                "huggingface": "Hugging Face", "openai": "OpenAI", "deepmind": "DeepMind", "google": "Google",
+                "theverge": "The Verge", "technologyreview": "MIT Tech Review", "simonwillison": "Simon Willison",
+                "techcrunch": "TechCrunch", "arstechnica": "Ars Technica"}
 
 
 def source_name(url):
@@ -938,7 +992,10 @@ def parse_date(s):
 def fetch_feed(url):
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     with OPENER.open(req, timeout=10) as r:
-        root = ET.fromstring(r.read(3_000_000))
+        data = r.read(3_000_000)
+    if data[:2] == b"\x1f\x8b":  # some feeds (DeepMind) send gzip even when not asked
+        data = gzip.decompress(data)
+    root = ET.fromstring(data)
     src = source_name(url)
     out = []
     for e in root.iter():
@@ -1448,6 +1505,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(football(cfg.get("football") or []))
         if path == "/api/news":
             return self._json(news(cfg.get("news")))
+        if path == "/api/ai":
+            return self._json(ai_feed() if cfg.get("ai", True) else {"models": [], "papers": []})
         if path == "/api/basketball":
             return self._json(basketball(cfg.get("basketball") or []))
         if path == "/api/tennis":
