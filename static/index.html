@@ -736,10 +736,13 @@
   function agendaHTML() {
     const now = Date.now(), events = calEvents();
     const today = fmtDayKey.format(new Date()), tomorrow = fmtDayKey.format(new Date(now + 864e5));
-    const group = key => events.filter(e => fmtDayKey.format(e.s) === key);
+    // An event belongs to every day it overlaps, so one that started yesterday still shows today.
+    const sKey = e => fmtDayKey.format(e.s), eKey = e => fmtDayKey.format(new Date(Math.max(e.s.getTime(), e.e.getTime() - 1)));
+    const group = key => events.filter(e => sKey(e) <= key && eKey(e) >= key).map(e => ({ ...e, key }));
     const row = e => {
       const past = e.e.getTime() < now, live = e.s.getTime() <= now && !past;
-      const when = e.all_day ? 'All day' : fmtTime.format(e.s);
+      const startsHere = sKey(e) === e.key, endsHere = eKey(e) === e.key;
+      const when = e.all_day || (!startsHere && !endsHere) ? 'All day' : !startsHere ? 'Until ' + fmtTime.format(e.e) : fmtTime.format(e.s);
       return `<div class="ev fr${past ? ' past' : ''}${live ? ' now' : ''}"><span class="when">${when}</span>
         <span class="what">${esc(e.title)}${e.location ? `<span class="where">${esc(e.location)}</span>` : ''}</span></div>`;
     };
@@ -754,7 +757,7 @@
     const cands = [];
     if (cal && cal.enabled) {
       const nx = calEvents().find(e => !e.all_day && e.e.getTime() > now);
-      if (nx) cands.push({ t: nx.s.getTime(), icon: 'cal', what: esc(nx.title), when: nx.s.getTime() <= now ? 'Now · until ' + fmtTime.format(nx.e)
+      if (nx) cands.push({ t: nx.s.getTime(), icon: 'cal', what: esc(nx.title), when: nx.s.getTime() <= now ? 'Now · until ' + (fmtDayKey.format(nx.e) === today ? '' : fmtShortDay().format(nx.e).split(' ')[0] + ' ') + fmtTime.format(nx.e)
         : (fmtDayKey.format(nx.s) === today ? '' : 'Tomorrow ') + fmtTime.format(nx.s) + ' · in ' + ago((nx.s - now) / 1000).replace(/ \d+s$/, '') });
     }
     if (myteams) {

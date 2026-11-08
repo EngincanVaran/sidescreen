@@ -23,13 +23,12 @@ Ideas for Sidescreen, roughly in the order we plan to build them.
 ## Waiting on you
 
 - A Twelve Data key in `config.json` to show stocks (check Borsa Istanbul is covered on the free plan).
-- Click Allow when macOS asks for calendar access (for the agenda).
 - Try the Spotify pill with the real app and allow "python3 may control Spotify".
 
 ## Done
 
 - Basketball tab: EuroLeague and EuroCup games and standings.
-- Apple Calendar read directly (EventKit), iCal links still supported.
+- Apple Calendar read directly through the Sidescreen Calendar helper app (EventKit), iCal links still supported.
 - Weather card rotates with reminders and agenda.
 
 ## Decided against

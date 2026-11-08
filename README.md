@@ -56,7 +56,9 @@ curl -X POST http://127.0.0.1:8765/api/hook -d '{"hook_event_name":"PermissionRe
 
 ## Calendar
 
-The agenda reads the Mac's own calendars directly: everything Calendar.app shows (iCloud, Google, Exchange accounts added in System Settings), with repeating events. The first time, macOS asks whether the server may access your calendars; click Allow. If you said no, allow it in System Settings → Privacy & Security → Calendars. Limit it to some calendars with `apple_calendar.calendars`, or turn it off with `"apple_calendar": {"enabled": false}`.
+The agenda reads the Mac's own calendars directly: everything Calendar.app shows (iCloud, Google, Exchange accounts added in System Settings), with repeating events, and events that span several days on each day they cover.
+
+macOS only lets apps (not scripts) ask for calendar access, so `install.sh` builds a tiny helper app, `build/Sidescreen Calendar.app`, from `scripts/calendar-helper/` (needs the Xcode command line tools: `xcode-select --install`). The server runs it every 5 minutes. The first time, macOS asks whether "Sidescreen Calendar" may access your calendars; click Allow. If you said no, allow it in System Settings → Privacy & Security → Calendars. Rebuilding the helper may ask again. Limit it to some calendars with `apple_calendar.calendars`, or turn it off with `"apple_calendar": {"enabled": false}`.
 
 You can also add iCal links (a calendar's address in the standard `.ics` format), for calendars that aren't on this Mac:
 
@@ -117,6 +119,7 @@ Other Turkish feeds that work: `https://www.hurriyet.com.tr/rss/gundem`, `https:
 - `static/index.html`: the whole dashboard. Weather comes straight from Open-Meteo.
 - `scripts/hooks.py`: adds/removes the hooks in `settings.json`.
 - `scripts/open-display.sh` + `scripts/screen-frame.js`: find the portable screen and open Chrome on it.
-- `scripts/reminders.js`, `scripts/calendar.js`, `scripts/spotify.js`: read Reminders, Calendar (EventKit) and Spotify (JavaScript for Automation, run with `osascript`).
+- `scripts/reminders.js`, `scripts/spotify.js`: read Reminders and Spotify
+- `scripts/calendar-helper/`: the Sidescreen Calendar helper app (Swift, EventKit) that reads your calendars (JavaScript for Automation, run with `osascript`).
 
 Data sources (no API keys): [Open-Meteo](https://open-meteo.com) for weather, [Truncgil Finans](https://finans.truncgil.com) for TL rates and gold, [Frankfurter](https://frankfurter.dev) (ECB) for 30-day currency trends, [CoinGecko](https://www.coingecko.com) for crypto and the gold trend (PAX Gold, one token per troy ounce, as a stand-in), ESPN's public site API for football, tennis and logos, the official EuroLeague API for basketball, and publishers' RSS feeds for news. Stocks use Twelve Data with your key. Truncgil and ESPN are unofficial and could change without notice.

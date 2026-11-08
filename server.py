@@ -333,17 +333,29 @@ class AppleCalendar:
         self.data = {"enabled": True, "events": [], "loading": True}
         threading.Thread(target=self._loop, args=(cfg, ac), daemon=True).start()
 
+    APP = ROOT / "build" / "Sidescreen Calendar.app"
+
+    def _read(self, days, names):
+        """Runs the helper app through LaunchServices (`open`), so macOS asks for calendar access
+        on behalf of "Sidescreen Calendar" (a plain script can't get it)."""
+        if not self.APP.exists():
+            raise RuntimeError("calendar helper not built: run ./install.sh (or scripts/calendar-helper/build.sh)")
+        out = ROOT / "build" / "calendar-out.json"
+        out.unlink(missing_ok=True)
+        r = subprocess.run(["open", "-W", "-n", "-g", "--stdout", str(out), "--stderr", "/dev/null",
+                            "-a", str(self.APP), "--args", days, names], capture_output=True, text=True, timeout=240)
+        if r.returncode != 0:
+            raise RuntimeError((r.stderr or "open failed").strip()[:200])
+        return json.loads(out.read_text() or "{}")
+
     def _loop(self, cfg, ac):
-        script = str(ROOT / "scripts" / "calendar.js")
         names = json.dumps([x for x in ac.get("calendars") or [] if isinstance(x, str)])
         days = str(max(1, int(cfg.get("calendar_days_ahead") or 2)))
         while True:
             try:
-                r = subprocess.run(["osascript", "-l", "JavaScript", script, days, names],
-                                   capture_output=True, text=True, timeout=90)
-                d = json.loads(r.stdout or "{}")
-                if r.returncode != 0 or d.get("error"):
-                    raise RuntimeError(d.get("error") or (r.stderr or "osascript failed").strip()[:200])
+                d = self._read(days, names)
+                if d.get("error"):
+                    raise RuntimeError(d["error"])
                 self.data = {"enabled": True, "events": d.get("events") or [], "updated": time.time()}
             except Exception as e:
                 log(f"apple calendar: {e}")

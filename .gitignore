@@ -8,3 +8,6 @@ sessions.json
 __pycache__/
 *.pyc
 *.bak-sidescreen-*
+
+# Built helper app (scripts/calendar-helper/build.sh)
+build/

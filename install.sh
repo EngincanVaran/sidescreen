@@ -32,6 +32,13 @@ PY="$(command -v python3 || true)"
 # First run: start from the example settings (config.json stays out of git).
 [ -f "$DIR/config.json" ] || cp "$DIR/config.example.json" "$DIR/config.json"
 
+# Calendar reader app (macOS only shows the calendar permission prompt to apps).
+if command -v swiftc >/dev/null; then
+  [ -d "$DIR/build/Sidescreen Calendar.app" ] || "$DIR/scripts/calendar-helper/build.sh" || echo "warning: calendar helper didn't build; the agenda will stay empty"
+else
+  echo "note: swiftc not found (xcode-select --install); the agenda will only use iCal links"
+fi
+
 PORT="$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1])).get("port", 8765))' "$DIR/config.json" 2>/dev/null || echo 8765)"
 DISPLAY_NAME="$("$PY" -c 'import json,sys; print(json.load(open(sys.argv[1])).get("display", ""))' "$DIR/config.json" 2>/dev/null || true)"
 chmod +x "$DIR/scripts/open-display.sh" "$DIR/uninstall.sh" 2>/dev/null || true
