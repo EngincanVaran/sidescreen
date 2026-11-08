@@ -2,12 +2,6 @@
 
 Ideas for Sidescreen, roughly in the order we plan to build them.
 
-## Next up
-
-### Turkish Basketball Super League (BSL)
-- Blocked on a data source. ESPN doesn't cover it, and tbf.org.tr shows a bot check to scripts (don't try to get around it).
-- To do: look for another free source (the league's own site, a public feed). If none, EuroLeague and EuroCup still cover the big Turkish clubs.
-
 ## Later
 
 - **Where to watch**: the TV channel next to each match, if ESPN provides it.
@@ -32,6 +26,14 @@ Ideas for Sidescreen, roughly in the order we plan to build them.
 - Weather card rotates with reminders and agenda.
 
 ## Decided against
+
+- Turkish Basketball Super League (BSL), for now: no free source without a key. Checked 2026-11-08:
+  - tbf.org.tr and bsl.org.tr: bot check (don't get around it).
+  - ESPN: doesn't cover it.
+  - TheSportsDB: complete only on the paid tier; the free key (`123`) returns just 15 games and some scores are missing.
+  - API-Basketball (api-sports.io): live scores, fixtures and standings, but needs a free key (100 requests/day). Skipped because it needs a key.
+  - Wikipedia's season page: has the table (as a template), but it's updated by hand, days behind, and has no fixtures.
+  Turkish clubs in the EuroLeague and EuroCup already show in the basketball tab.
 
 - Earthquake alerts.
 - Yahoo Finance for stocks (blocked; its workaround counts as getting around a bot check).
