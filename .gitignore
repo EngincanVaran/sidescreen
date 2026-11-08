@@ -1,0 +1,10 @@
+# Your own settings and data (stock key, calendar links, followed teams, session prompts)
+config.json
+prefs.json
+sessions.json
+
+# macOS / Python
+.DS_Store
+__pycache__/
+*.pyc
+*.bak-sidescreen-*

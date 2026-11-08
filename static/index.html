@@ -1,0 +1,1523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sidescreen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0B0C0E;
+    --card: #131519;
+    --border: #1F2228;
+    --border-strong: #2A2E36;
+    --text: #F2F3F5;
+    --text-2: #C9CDD3;
+    --muted: #8B919B;
+    --working: #7AA2FF;
+    --waiting: #FFAA40;
+    --done: #5FD3A0;
+    --error: #FF6B6B;
+    --idle: #8B919B;
+    --live: #FF5A5F;
+    --remind: #B69CFF;
+    --radius: 26px;
+    --sans: "Geist", system-ui, -apple-system, sans-serif;
+    --mono: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); overflow: hidden; }
+  body { font-family: var(--sans); -webkit-font-smoothing: antialiased; cursor: default; }
+  button, input { font: inherit; color: inherit; }
+  .mono { font-family: var(--mono); }
+  svg.i { width: 1em; height: 1em; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* Fixed 1920x1080 stage, scaled to fit whatever window it's in */
+  #stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; transition: translate 4s ease; }
+  #dim { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; transition: opacity 3s ease; z-index: 50; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
+  .label { font-size: 15px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 10px; }
+  .label svg { font-size: 18px; }
+  .label .count { margin-left: auto; letter-spacing: 0; text-transform: none; font-family: var(--mono); font-weight: 400; }
+
+  /* ---------- Ambient mode ---------- */
+  #ambient { position: absolute; inset: 0; padding: 64px 72px; display: grid; grid-template-columns: 1fr 680px; gap: 56px; }
+  .left { display: flex; flex-direction: column; min-width: 0; }
+  .right { display: flex; flex-direction: column; gap: 28px; min-height: 0; }
+
+  .clock { display: flex; align-items: baseline; gap: 20px; margin-top: 8px; }
+  .clock .hm { font-size: 300px; font-weight: 300; letter-spacing: -0.055em; line-height: 0.86; font-variant-numeric: tabular-nums; }
+  .clock .s { font-family: var(--mono); font-size: 56px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .date { font-size: 42px; font-weight: 400; color: var(--text-2); margin-top: 36px; letter-spacing: -0.01em; }
+
+  /* Date row + collapsible YouTube box */
+  .daterow { display: flex; align-items: center; gap: 24px; margin-top: 30px; height: 64px; }
+  .daterow .date { margin-top: 0; flex: none; }
+  .yt { margin-left: auto; display: flex; align-items: center; height: 60px; width: 170px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); overflow: hidden; transition: width .35s ease, border-color .2s; }
+  .yt-open { display: flex; align-items: center; gap: 10px; height: 100%; width: 100%; padding: 0 24px; font-size: 19px; color: var(--text-2); background: none; border: 0; cursor: pointer; white-space: nowrap; }
+  .yt-open svg { font-size: 24px; }
+  .yt input, .yt .go, .yt .cl { display: none; }
+  .yt.open { width: 600px; border-color: var(--border-strong); }
+  .yt.open .yt-open { display: none; }
+  .yt.open input { display: block; flex: 1; min-width: 0; background: none; border: 0; outline: none; font-size: 20px; padding: 0 8px 0 24px; color: var(--text); }
+  .yt input::placeholder { color: var(--muted); }
+  .yt.open .go { display: inline-flex; height: 48px; padding: 0 22px; font-size: 17px; }
+  .yt.open .cl { display: grid; place-items: center; width: 44px; height: 44px; margin: 0 6px; border-radius: 50%; border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 20px; }
+  .yt.bad { border-color: var(--error); }
+
+  /* Spotify now-playing pill: only there while something plays (or was paused in the last 2 min) */
+  .np { margin-left: auto; display: none; align-items: center; gap: 14px; height: 64px; flex: 0 1 470px; min-width: 0; padding: 0 8px 0 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--card); position: relative; overflow: hidden; animation: npIn .45s ease; }
+  .np.on { display: flex; }
+  .np.on + .yt { margin-left: 0; }
+  .daterow:has(.yt.open) .np { display: none; }
+  .daterow:has(.yt.open) .yt { margin-left: auto; }
+  @keyframes npIn { from { opacity: 0; translate: 12px 0; } }
+  .np .art { width: 48px; height: 48px; flex: none; border-radius: 50%; background: #1A1D22 center / cover; }
+  .np.playing .art { animation: npSpin 12s linear infinite; }
+  @keyframes npSpin { to { rotate: 360deg; } }
+  .np .tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .np .tx b { font-size: 18px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .np .tx span { font-size: 15px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .np .ctl { display: flex; gap: 2px; flex: none; }
+  .np .ctl button { width: 44px; height: 44px; border-radius: 50%; border: 0; background: none; color: var(--text-2); display: grid; place-items: center; cursor: pointer; font-size: 20px; }
+  .np .ctl button:hover { background: #1A1D22; color: var(--text); }
+  .np .ctl .pp { color: var(--text); font-size: 22px; }
+  .np .bar { position: absolute; left: 30px; right: 30px; bottom: 0; height: 2px; background: var(--border); border-radius: 2px; }
+  .np .bar i { display: block; height: 100%; width: 0; background: var(--text-2); border-radius: 2px; transition: width 1s linear; }
+  .np.paused .tx b { color: var(--text-2); }
+  .duo { margin-top: auto; display: grid; grid-template-columns: 400px 1fr; gap: 28px; height: 552px; }
+  .weather { padding: 28px 32px 26px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .wx-now { display: flex; align-items: center; gap: 24px; }
+  .wx-now svg { font-size: 64px; color: var(--text-2); stroke-width: 1.2; }
+  .wx-temp { font-size: 80px; font-weight: 300; letter-spacing: -0.04em; line-height: 1; }
+  .wx-meta { display: flex; flex-direction: column; gap: 8px; }
+  .wx-cond { font-size: 26px; color: var(--text); }
+  .wx-sub { font-size: 19px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 20px; }
+  .wx-sub span { display: inline-flex; align-items: center; gap: 7px; }
+  .hourly { display: grid; grid-template-columns: repeat(6, 1fr); border-top: 1px solid var(--border); padding-top: 12px; }
+  .daily { margin-top: auto; display: flex; flex-direction: column; gap: 3px; border-top: 1px solid var(--border); padding-top: 10px; }
+  /* day · icon · rain · low · range bar · high */
+  .day { display: grid; grid-template-columns: 56px 26px 40px 32px 1fr 32px; gap: 8px; align-items: center; height: 28px; font-size: 17px; }
+  .day .dn { color: var(--text-2); }
+  .day.today .dn { color: var(--text); font-weight: 500; }
+  .day svg { font-size: 21px; color: var(--text-2); }
+  .day .pp { font-family: var(--mono); font-size: 13px; color: var(--working); }
+  .day .lo, .day .hi { font-family: var(--mono); font-size: 16px; text-align: right; }
+  .day .lo { color: var(--muted); }
+  .day .bar { position: relative; height: 5px; border-radius: 3px; background: var(--border); }
+  .day .bar i { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: var(--text-2); opacity: .75; }
+  .day .bar b { position: absolute; top: -2px; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 50%; background: var(--text); border: 2px solid var(--card); }
+
+  /* Rotating card: markets, scores, league tables */
+  .ticker { padding: 30px 34px; display: flex; flex-direction: column; gap: 16px; min-width: 0; overflow: hidden; }
+  .tk-head { display: flex; align-items: center; min-height: 32px; }
+  .tk-head .label { gap: 12px; min-width: 0; }
+  .lgo { width: 32px; height: 32px; object-fit: contain; flex: none; }
+  .badge { font-size: 12px; font-weight: 600; letter-spacing: .08em; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--border-strong); color: var(--text); background: #1A1D22; }
+  .livepill { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 9px; border-radius: 999px; background: rgba(255,90,95,0.14); border: 1px solid rgba(255,90,95,0.35); color: #FF8589; font-size: 12px; font-weight: 600; letter-spacing: .1em; }
+  .livepill i { width: 7px; height: 7px; border-radius: 50%; background: var(--live); animation: livePulse 1.6s ease-in-out infinite; }
+  @keyframes livePulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,90,95,0.6); } 50% { box-shadow: 0 0 0 5px rgba(255,90,95,0); } }
+  .lg img { width: 18px; height: 18px; object-fit: contain; vertical-align: -4px; margin-right: 8px; }
+  .tk-dots { margin-left: auto; display: flex; gap: 7px; }
+  .tk-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--border-strong); transition: background .3s, width .3s; }
+  .tk-dots i.on { background: var(--text-2); width: 20px; border-radius: 4px; }
+  .tk-body { flex: 1; min-height: 0; overflow: hidden; transition: opacity .45s ease; }
+  .tk-head .label { transition: opacity .45s ease; }
+  .ticker.fade .tk-body, .ticker.fade .tk-head .label { opacity: 0; }
+  .ticker.sports { flex: 1 1 0; min-height: 520px; }
+  .right .sessions { flex: none; max-height: 404px; }
+
+  .mk { display: grid; grid-template-columns: 1fr 160px 190px; gap: 14px; align-items: center; padding: 16px 0; border-bottom: 1px solid var(--border); }
+  .mk.sm { padding: 12px 0; }
+  .mk.sm .v { font-size: 32px; }
+  .mk > div:last-child { text-align: right; }
+  .spark { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .spark path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .spark circle { fill: currentColor; }
+  .spark span { font-family: var(--mono); font-size: 13px; }
+  .spark.up { color: var(--done); } .spark.down { color: var(--error); } .spark.flat { color: var(--muted); }
+  .mk-sec { font-size: 13px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 10px 0 0; }
+  .mk-sec:first-child { padding-top: 0; }
+  .mk:last-child { border-bottom: 0; }
+  .mk .n { font-size: 22px; }
+  .mk .b { font-size: 16px; color: var(--muted); margin-top: 4px; font-family: var(--mono); }
+  .mk .v { font-family: var(--mono); font-size: 40px; letter-spacing: -0.02em; text-align: right; }
+  .mk .v small { font-size: 20px; color: var(--muted); margin-left: 6px; }
+  .chg { font-family: var(--mono); font-size: 16px; text-align: right; margin-top: 2px; }
+  .up { color: var(--done); } .down { color: var(--error); } .flat { color: var(--muted); }
+  .tbl { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .tbl col.r { width: 40px; } .tbl col.n { width: 42px; } .tbl col.g { width: 58px; } .tbl col.pts { width: 52px; } .tbl col.pp { width: 90px; } .tbl col.mv { width: 56px; }
+  .tbl th { font-size: 13px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-align: right; padding: 0 0 8px; }
+  .tbl th.t { text-align: left; }
+  .tbl td { padding: 4px 0; text-align: right; font-family: var(--mono); font-size: 17px; color: var(--text-2); }
+  .tbl td.r { text-align: left; color: var(--muted); }
+  .tbl td.t { text-align: left; font-family: var(--sans); font-size: 19px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 10px; }
+  .tbl td.pts { color: var(--text); font-weight: 500; }
+  .tbl tr.gap td { padding: 0; height: 12px; border-bottom: 1px dashed var(--border); }
+  .tbl tr.gap + tr td { padding-top: 9px; }
+  .tbl tr.zone td.r { color: var(--working); }
+  .tbl tr.mid td.r { color: rgba(122,162,255,0.6); }
+  .tbl tr.drop td.r { color: var(--error); }
+  .tbl tr.me td { background: rgba(122,162,255,0.11); }
+  .tbl tr.me td.t { font-weight: 600; }
+  .tbl tr.me td:first-child { border-radius: 8px 0 0 8px; padding-left: 8px; }
+  .tbl tr.me td:last-child { border-radius: 0 8px 8px 0; padding-right: 8px; }
+  .mt.me { background: rgba(122,162,255,0.09); border-radius: 10px; padding-left: 8px; padding-right: 8px; margin: 0 -8px; }
+  .mt b { font-weight: 600; }
+  .myt { display: grid; grid-template-columns: 46px 1fr auto; gap: 16px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .myt:last-child { border-bottom: 0; }
+  .myt img { width: 46px; height: 46px; object-fit: contain; }
+  .myt .nm { font-size: 22px; font-weight: 500; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .myt .nm small { display: block; font-size: 15px; color: var(--muted); font-weight: 400; margin-top: 3px; font-family: var(--mono); }
+  .myt .nx { text-align: right; font-size: 16px; color: var(--muted); white-space: nowrap; }
+  .myt .nx b { display: block; font-family: var(--mono); font-size: 18px; color: var(--text); font-weight: 500; margin-bottom: 3px; }
+  .myt .nx.live b { color: #FF8589; }
+  .sp-tabs { margin-left: auto; display: flex; gap: 4px; padding: 3px; border-radius: 999px; background: #0F1114; border: 1px solid var(--border); }
+  .sp-tab { height: 30px; padding: 0 14px; border-radius: 999px; border: 0; background: none; font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); cursor: pointer; }
+  .sp-tab.on { background: #23272E; color: var(--text); }
+  .star { margin-left: 12px; width: 40px; height: 40px; flex: none; border-radius: 12px; border: 1px solid var(--border); background: none; color: var(--muted); display: grid; place-items: center; cursor: pointer; font-size: 20px; }
+  .star:hover { color: var(--text); border-color: var(--border-strong); }
+  .star.on { color: var(--working); }
+  .star.on svg { fill: rgba(122,162,255,0.25); }
+  .mt { display: grid; grid-template-columns: 74px 1fr auto 1fr; gap: 12px; align-items: center; padding: 8px 0; font-size: 19px; }
+  .mt .st { font-family: var(--mono); font-size: 15px; color: var(--muted); }
+  .mt.live .st { color: #FF8589; }
+  .mt.live .st::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--live); margin-right: 7px; vertical-align: 2px; animation: livePulse 1.6s infinite; }
+  .mt.live .sc { color: #fff; font-weight: 500; }
+  .mt .h { text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mt .a { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mt .sc { font-family: var(--mono); font-size: 20px; min-width: 58px; text-align: center; color: var(--text); }
+  .mt.pre .sc { color: var(--muted); font-size: 15px; }
+  .mt.post { color: var(--text-2); }
+  .lg { font-size: 13px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 10px 0 2px; }
+  .lg:first-child { padding-top: 0; }
+  .nw { padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .nw:first-child { padding-top: 2px; }
+  .nw:last-child { border-bottom: 0; }
+  .nw .meta { font-family: var(--mono); font-size: 13px; color: var(--muted); letter-spacing: .02em; }
+  .nw .hd { font-size: 21px; line-height: 1.28; margin-top: 5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .nw .sm { font-size: 16px; line-height: 1.4; color: var(--muted); margin-top: 5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .tm { display: grid; grid-template-columns: 66px 1fr auto; grid-template-rows: auto auto; column-gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .tm:last-child { border-bottom: 0; }
+  .tm .rd { grid-row: 1 / 3; align-self: center; font-family: var(--mono); font-size: 15px; color: var(--muted); }
+  .tm.live .rd { color: #FF8589; }
+  .tm.live .rd::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--live); margin-right: 6px; vertical-align: 2px; animation: livePulse 1.6s infinite; }
+  .tm .when { grid-column: 3; grid-row: 1 / 3; align-self: center; font-family: var(--mono); font-size: 16px; color: var(--text-2); }
+  .tm .pl { grid-column: 2 / 4; display: flex; justify-content: space-between; gap: 12px; font-size: 19px; color: var(--text-2); }
+  .tm.pre .pl { grid-column: 2; }
+  .tm .pl.win { color: var(--text); font-weight: 500; }
+  .tm .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tm .nm i { font-style: normal; font-family: var(--mono); font-size: 13px; color: var(--muted); margin-left: 8px; font-weight: 400; }
+  .tm .sets { display: flex; gap: 12px; font-family: var(--mono); font-size: 18px; }
+  .tm .sets b { font-weight: 400; min-width: 12px; text-align: center; color: var(--muted); }
+  .tm .sets b.w { color: var(--text); }
+  .hour { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .hour .t { font-family: var(--mono); font-size: 14px; color: var(--muted); }
+  .hour svg { font-size: 22px; color: var(--text-2); }
+  .hour .v { font-size: 18px; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 60px; padding: 0 30px; border-radius: 999px; border: 1px solid var(--border-strong); background: #1A1D22; font-size: 20px; font-weight: 500; cursor: pointer; white-space: nowrap; }
+  .btn:hover { background: #22262D; }
+  .btn.primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .btn.primary:hover { background: #fff; }
+  .btn svg { font-size: 22px; }
+
+  /* Agenda */
+  .ev { display: grid; grid-template-columns: 108px 1fr; gap: 14px; align-items: baseline; padding: 6px 0; }
+  .ev .when { font-family: var(--mono); font-size: 17px; color: var(--text-2); }
+  .ev .what { font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .ev .where { display: block; font-size: 15px; color: var(--muted); margin-top: 2px; }
+  .ev.past { opacity: 0.45; }
+  .ev.now .when { color: var(--working); }
+  .ev.late .when { color: var(--error); }
+  .ev .flag { color: var(--waiting); }
+  .empty { font-size: 20px; color: var(--muted); padding: 6px 0; }
+
+  /* Sessions */
+  .sessions { padding: 32px 36px; display: flex; flex-direction: column; gap: 18px; flex: 1 1 0; min-height: 0; overflow: hidden; }
+  .slist { display: flex; flex-direction: column; gap: 10px; }
+  .sess { border: 1px solid var(--border); border-radius: 18px; padding: 14px 22px; display: grid; grid-template-columns: auto 1fr auto; gap: 4px 16px; align-items: center; background: #15171C; }
+  .sess .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--c); }
+  .sess .name { font-size: 23px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sess .state { font-size: 17px; color: var(--c); display: flex; align-items: center; gap: 12px; }
+  .sess .state .mono { color: var(--muted); }
+  .sess .detail { grid-column: 2 / -1; font-size: 18px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sess .detail.mono { font-size: 17px; }
+  .sess[data-s=working] { --c: var(--working); }
+  .sess[data-s=done] { --c: var(--done); }
+  .sess[data-s=error] { --c: var(--error); }
+  .sess[data-s=idle] { --c: var(--idle); }
+  .sess[data-s=waiting] { --c: var(--waiting); background: rgba(255,170,64,0.08); border-color: rgba(255,170,64,0.38); }
+  .sess[data-s=waiting] .dot { box-shadow: 0 0 0 5px rgba(255,170,64,0.16), 0 0 18px rgba(255,170,64,0.7); animation: pulse 1.8s ease-in-out infinite; }
+  .sess[data-s=waiting] .detail { color: var(--text-2); }
+  .sess[data-s=working] .dot { animation: breathe 2.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 9px rgba(255,170,64,0.06), 0 0 26px rgba(255,170,64,0.9); } }
+  @keyframes breathe { 50% { opacity: 0.45; } }
+  .more { font-size: 17px; color: var(--muted); padding-left: 4px; }
+
+  /* ---------- Match mode ---------- */
+  #match { position: absolute; inset: 0; display: none; grid-template-columns: 1fr 480px; }
+  body.match #ambient { display: none; }
+  body.match #match { display: grid; }
+  body.match.norail #match { grid-template-columns: 1fr 0; }
+  body.match.norail .rail { display: none; }
+  .video { position: relative; background: #000; }
+  .video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+  .rail { border-left: 1px solid var(--border); padding: 30px 36px 28px; display: flex; flex-direction: column; gap: 14px; min-height: 0; overflow: hidden; }
+  .rail .clock .hm { font-size: 104px; letter-spacing: -0.05em; }
+  .rail .clock .s { font-size: 26px; }
+  .rail .clock { gap: 12px; margin-top: 0; }
+  .rail .date { font-size: 22px; margin-top: 8px; }
+  .rail-wx { padding: 16px 24px; display: flex; align-items: center; gap: 20px; }
+  .rail-wx > svg { font-size: 46px; color: var(--text-2); stroke-width: 1.3; }
+  .rail-wx .wx-temp { font-size: 54px; }
+  .rail-wx .wx-cond { font-size: 20px; }
+  .rail-wx .wx-sub { font-size: 16px; gap: 6px 14px; flex-wrap: wrap; }
+  .rail-wx .wx-meta { min-width: 0; gap: 6px; }
+  .rail .sess .tc { display: none; }
+  .rail .sessions { padding: 18px 22px; gap: 12px; flex: none; }
+  .rail .sess { padding: 13px 16px; gap: 2px 12px; border-radius: 14px; }
+  .rail .sess .name { font-size: 19px; }
+  .rail .sess .state { font-size: 15px; }
+  .rail .sess .detail { font-size: 15px; }
+  .rail .label { font-size: 13px; }
+  .rail-mk { padding: 16px 22px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .rm { display: flex; flex-direction: column; gap: 2px; }
+  .rm .k { font-size: 13px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .rm .x { font-family: var(--mono); font-size: 21px; }
+  .rm .chg { text-align: left; font-size: 13px; }
+  .rail-sc { padding: 18px 22px; display: flex; flex-direction: column; gap: 4px; flex: none; }
+  .rail-sc .label { margin-bottom: 6px; }
+  .rs[hidden] { display: none; }
+  .rs { display: grid; grid-template-columns: 62px 1fr auto 1fr; gap: 10px; align-items: center; padding: 5px 0; font-size: 18px; }
+  .rs .st { font-family: var(--mono); font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .rs.live .st { color: #FF8589; }
+  .rs.live .st::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--live); margin-right: 6px; vertical-align: 2px; animation: livePulse 1.6s infinite; }
+  .rs .h { text-align: right; }
+  .rs .h, .rs .a { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rs .sc { font-family: var(--mono); font-size: 19px; min-width: 52px; text-align: center; }
+  .rs.live .sc { color: #fff; font-weight: 500; }
+  .rs.pre .sc { color: var(--muted); font-size: 14px; }
+  .rs.post { color: var(--text-2); }
+  .rs.me { background: rgba(122,162,255,0.09); border-radius: 10px; padding-left: 8px; padding-right: 8px; margin: 0 -8px; }
+  .rs b { font-weight: 600; }
+  .rail-sc .more { font-size: 14px; color: var(--muted); padding-top: 4px; }
+  .next { padding: 16px 22px; display: flex; flex-direction: column; gap: 6px; }
+  .next .what { font-size: 21px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .next .when { font-family: var(--mono); font-size: 16px; color: var(--text-2); }
+  .rail-btns { margin-top: auto; display: grid; grid-template-columns: 1fr auto auto; gap: 10px; }
+  .rail-btns .btn { height: 50px; padding: 0 18px; font-size: 16px; }
+  .rail-btns .btn svg { font-size: 18px; }
+
+  .float-ctl { position: absolute; top: 24px; right: 24px; display: none; gap: 10px; opacity: 0; transition: opacity .3s; }
+  body.norail .float-ctl { display: flex; }
+  .video:hover .float-ctl { opacity: 1; }
+  .float-ctl .btn { height: 48px; padding: 0 18px; font-size: 16px; background: rgba(19,21,25,0.85); backdrop-filter: blur(10px); }
+
+  /* Alerts: goals, kick-offs, reminders, Claude */
+  #alerts { position: absolute; top: 28px; left: 960px; translate: -50% 0; width: 900px; z-index: 40; display: flex; flex-direction: column; align-items: center; gap: 12px; pointer-events: none; }
+  body.match #alerts { left: 720px; }
+  body.match.norail #alerts { left: 960px; }
+  .alert { pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 18px; max-width: 100%; padding: 14px 28px 14px 14px; border-radius: 20px; background: rgba(19,21,25,0.95); border: 1px solid var(--bd, var(--border-strong)); box-shadow: 0 16px 48px rgba(0,0,0,0.55); backdrop-filter: blur(12px); animation: alertIn .4s ease; transition: opacity .35s, translate .35s; }
+  .alert.out { opacity: 0; translate: 0 -12px; }
+  @keyframes alertIn { from { opacity: 0; translate: 0 -14px; } }
+  .alert .ic { width: 52px; height: 52px; flex: none; border-radius: 14px; display: grid; place-items: center; background: var(--bgc, #1A1D22); color: var(--c, var(--text)); font-size: 26px; }
+  .alert .ic img { width: 36px; height: 36px; object-fit: contain; }
+  .alert .tag { font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--c, var(--muted)); }
+  .alert b { display: block; font-size: 22px; font-weight: 600; margin-top: 2px; }
+  .alert span { display: block; font-size: 17px; color: var(--text-2); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 720px; }
+  .alert[data-k=goal] { --c: var(--done); --bgc: rgba(95,211,160,0.14); --bd: rgba(95,211,160,0.5); }
+  .alert[data-k=kickoff] { --c: var(--working); --bgc: rgba(122,162,255,0.14); --bd: rgba(122,162,255,0.45); }
+  .alert[data-k=ft] { --c: var(--text-2); }
+  .alert[data-k=reminder] { --c: var(--remind); --bgc: rgba(182,156,255,0.14); --bd: rgba(182,156,255,0.45); }
+  .alert[data-k=claude] { --c: var(--waiting); --bgc: rgba(255,170,64,0.14); --bd: rgba(255,170,64,0.55); background: rgba(36,26,12,0.95); cursor: default; }
+
+  /* Team picker */
+  .picker { position: absolute; inset: 0; z-index: 45; background: rgba(5,6,8,0.74); backdrop-filter: blur(6px); display: grid; place-items: center; }
+  .picker[hidden] { display: none; }
+  .pk-box { width: 1320px; height: 860px; padding: 36px 40px; display: flex; flex-direction: column; gap: 22px; }
+  .pk-head { display: flex; align-items: center; gap: 20px; }
+  .pk-head .label { font-size: 17px; color: var(--text); }
+  .pk-head .label svg { color: var(--working); }
+  .pk-head .btn { margin-left: auto; height: 52px; }
+  .pk-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pk-tab { height: 44px; padding: 0 16px; border-radius: 999px; border: 1px solid var(--border-strong); background: #1A1D22; display: inline-flex; align-items: center; gap: 9px; font-size: 16px; cursor: pointer; color: var(--text-2); }
+  .pk-tab img { width: 22px; height: 22px; object-fit: contain; }
+  .pk-tab.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+  .pk-grid { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; align-content: start; overflow: auto; }
+  .pk-team { height: 64px; display: flex; align-items: center; gap: 14px; padding: 0 18px; border-radius: 16px; border: 1px solid var(--border); background: #15171C; font-size: 19px; cursor: pointer; text-align: left; color: var(--text); }
+  .pk-team img { width: 34px; height: 34px; object-fit: contain; }
+  .pk-team .nm { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pk-team svg { font-size: 22px; color: var(--border-strong); }
+  .pk-team.on { border-color: rgba(122,162,255,0.6); background: rgba(122,162,255,0.12); }
+  .pk-team.on svg { color: var(--working); fill: var(--working); }
+  .pk-foot { font-size: 16px; color: var(--muted); }
+
+  .demo-tag { position: absolute; right: 24px; bottom: 18px; font-family: var(--mono); font-size: 13px; color: #5A606A; display: none; }
+  body.demo .demo-tag, body.offline .demo-tag { display: block; }
+  .demo-tag .off, body.offline .demo-tag .smp { display: none; }
+  body.offline .demo-tag .off { display: inline; }
+  body.match .demo-tag { display: none; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+    <symbol id="i-partly" viewBox="0 0 24 24"><path d="M8 3.5v1.2M3.5 8h1.2M4.8 4.8l.9.9M12.2 4.8l-.9.9"/><path d="M5.6 10.6A3.5 3.5 0 1 1 11.6 7"/><path d="M17.5 20H9a4 4 0 1 1 .9-7.9A5 5 0 0 1 19.4 14 3 3 0 0 1 17.5 20z"/></symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H8a5 5 0 1 1 1.2-9.9A6 6 0 0 1 20.4 12 3.5 3.5 0 0 1 17.5 19z"/></symbol>
+    <symbol id="i-fog" viewBox="0 0 24 24"><path d="M4 9h16M3 13h18M5 17h14M8 21h8"/></symbol>
+    <symbol id="i-rain" viewBox="0 0 24 24"><path d="M17.5 15H8a5 5 0 1 1 1.2-9.9A6 6 0 0 1 20.4 8 3.5 3.5 0 0 1 17.5 15z"/><path d="M9 18l-1 3M13 18l-1 3M17 18l-1 3"/></symbol>
+    <symbol id="i-snow" viewBox="0 0 24 24"><path d="M17.5 15H8a5 5 0 1 1 1.2-9.9A6 6 0 0 1 20.4 8 3.5 3.5 0 0 1 17.5 15z"/><path d="M8 19h.01M12 18h.01M16 19h.01M10 22h.01M14 22h.01"/></symbol>
+    <symbol id="i-storm" viewBox="0 0 24 24"><path d="M17.5 15H8a5 5 0 1 1 1.2-9.9A6 6 0 0 1 20.4 8 3.5 3.5 0 0 1 17.5 15z"/><path d="M13 15l-2.5 4h3L11 23"/></symbol>
+    <symbol id="i-wind" viewBox="0 0 24 24"><path d="M3 8h11a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h7"/></symbol>
+    <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></symbol>
+    <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+    <symbol id="i-term" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="3"/><path d="M7 10l3 2.5L7 15M12.5 15H17"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="4"/><path d="M10 9.2v5.6l4.8-2.8z"/></symbol>
+    <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="3"/><path d="M15 4.5v15"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 6.5v11L10 12z"/><path d="M6.5 6v12"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 6.5v11l8-5.5z"/><path d="M17.5 6v12"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 6v12M15 6v12"/></symbol>
+    <symbol id="i-resume" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5z"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-trend" viewBox="0 0 24 24"><path d="M3 17l5.5-5.5 4 4L21 7"/><path d="M15 7h6v6"/></symbol>
+    <symbol id="i-ball" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5l4.3 3.1-1.6 5h-5.4l-1.6-5z"/><path d="M12 7.5V3M16.3 10.6l4.3-1.4M14.7 15.6l2.7 3.7M9.3 15.6l-2.7 3.7M7.7 10.6L3.4 9.2"/></symbol>
+    <symbol id="i-tennis" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6a9 9 0 0 1 0 12.8M18.4 5.6a9 9 0 0 0 0 12.8"/></symbol>
+    <symbol id="i-news" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M7.5 9h9M7.5 12.5h9M7.5 16h5"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.7 2.7L16 9.8"/></symbol>
+    <symbol id="i-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 8h3.8a2 2 0 0 1 0 4H9.5h4.3a2 2 0 0 1 0 4H9.5zM11 6.5V8M11 16v1.5"/></symbol>
+    <symbol id="i-table" viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M3.5 9.5h17M3.5 14.5h17M9 9.5V20"/></symbol>
+  </defs>
+</svg>
+
+<div id="stage">
+  <!-- Ambient -->
+  <section id="ambient">
+    <div class="left">
+      <div class="clock"><span class="hm" data-hm>--:--</span><span class="s" data-sec>--</span></div>
+      <div class="daterow">
+        <div class="date" data-date>&nbsp;</div>
+        <div class="np" id="np">
+          <div class="art"></div>
+          <div class="tx"><b></b><span></span></div>
+          <div class="ctl">
+            <button data-act="sp-previous" title="Previous"><svg class="i"><use href="#i-prev"/></svg></button>
+            <button class="pp" data-act="sp-playpause" title="Play / pause"><svg class="i"><use href="#i-pause"/></svg></button>
+            <button data-act="sp-next" title="Next"><svg class="i"><use href="#i-next"/></svg></button>
+          </div>
+          <div class="bar"><i></i></div>
+        </div>
+        <form class="yt" id="yt" autocomplete="off">
+          <button type="button" class="yt-open" data-act="yt-open"><svg class="i"><use href="#i-play"/></svg>YouTube</button>
+          <input id="url" placeholder="Paste a YouTube link" spellcheck="false">
+          <button class="btn primary go" type="submit">Watch</button>
+          <button type="button" class="cl" data-act="yt-close" title="Close"><svg class="i"><use href="#i-x"/></svg></button>
+        </form>
+      </div>
+
+      <div class="duo">
+        <div class="card weather">
+          <div class="wx-now">
+            <svg class="i" data-wx-icon><use href="#i-cloud"/></svg>
+            <div class="wx-temp" data-wx-temp>--°</div>
+          </div>
+          <div class="wx-meta">
+            <div class="wx-cond" data-wx-cond>Loading weather…</div>
+            <div class="wx-sub" data-wx-sub></div>
+          </div>
+          <div class="daily" id="daily"></div>
+          <div class="hourly" id="hourly"></div>
+        </div>
+        <div class="card ticker">
+          <div class="tk-head"><div class="label" id="fin-label">Markets</div><div class="tk-dots" id="fin-dots"></div></div>
+          <div class="tk-body" id="fin-body"><div class="empty">Loading…</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="card ticker sports">
+        <div class="tk-head"><div class="label" id="sp-label">Sports</div><div class="sp-tabs" id="sp-dots"></div>
+          <button class="star" id="sp-star" data-act="picker" title="Follow teams"><svg class="i"><use href="#i-star"/></svg></button></div>
+        <div class="tk-body" id="sp-body"><div class="empty">Loading…</div></div>
+      </div>
+      <div class="card sessions">
+        <div class="label"><svg class="i"><use href="#i-term"/></svg>Claude Code <span class="count" data-count></span></div>
+        <div class="slist" id="sessions"></div>
+      </div>
+    </div>
+    <div class="demo-tag"><span class="smp">sample data (?demo)</span><span class="off">server offline</span></div>
+  </section>
+
+  <!-- Match -->
+  <section id="match">
+    <div class="video">
+      <div id="player"></div>
+      <div class="float-ctl">
+        <button class="btn" data-act="rail"><svg class="i"><use href="#i-panel"/></svg>Show rail</button>
+        <button class="btn" data-act="exit"><svg class="i"><use href="#i-x"/></svg>Exit</button>
+      </div>
+    </div>
+    <aside class="rail">
+      <div>
+        <div class="clock"><span class="hm" data-hm>--:--</span><span class="s" data-sec>--</span></div>
+        <div class="date" data-date>&nbsp;</div>
+      </div>
+      <div class="card rail-wx">
+        <svg class="i" data-wx-icon><use href="#i-cloud"/></svg>
+        <div class="wx-temp" data-wx-temp>--°</div>
+        <div class="wx-meta">
+          <div class="wx-cond" data-wx-cond></div>
+          <div class="wx-sub" data-wx-sub></div>
+        </div>
+      </div>
+      <div class="card rail-mk" id="rail-mk" style="display:none"></div>
+      <div class="card rail-sc" id="rail-sc" style="display:none"></div>
+      <div class="card sessions">
+        <div class="label"><svg class="i"><use href="#i-term"/></svg>Claude Code <span class="count" data-count></span></div>
+        <div class="slist" id="rail-sessions"></div>
+      </div>
+      <div class="card next" id="next"></div>
+      <div class="rail-btns">
+        <button class="btn" data-act="yt"><svg class="i"><use href="#i-ext"/></svg>Open on YouTube</button>
+        <button class="btn" data-act="rail" title="Hide rail"><svg class="i"><use href="#i-panel"/></svg>Hide</button>
+        <button class="btn" data-act="exit" title="Exit (Esc)"><svg class="i"><use href="#i-x"/></svg>Exit</button>
+      </div>
+    </aside>
+  </section>
+
+  <div id="alerts"></div>
+
+  <div class="picker" id="picker" hidden>
+    <div class="card pk-box">
+      <div class="pk-head">
+        <div class="label"><svg class="i"><use href="#i-star"/></svg>Follow teams</div>
+        <div class="pk-tabs" id="pk-tabs"></div>
+        <button class="btn primary" data-act="pk-done">Done</button>
+      </div>
+      <div class="pk-grid" id="pk-grid"></div>
+      <div class="pk-foot">Followed teams are highlighted, shown first, and get goal and kick-off alerts.</div>
+    </div>
+  </div>
+</div>
+<div id="dim"></div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem('ss.' + k)); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem('ss.' + k, JSON.stringify(v)); } catch {} },
+  };
+  const forceDemo = new URLSearchParams(location.search).has('demo');
+
+  let cfg = {
+    location: { name: 'Istanbul', lat: 41.01, lon: 28.98 },
+    timezone: 'Europe/Istanbul', locale: 'en-GB', hour12: false,
+    night_dim: { start: '00:30', end: '07:30', opacity: 0.45 },
+  };
+
+  // ---------- Stage scaling + burn-in drift ----------
+  const stage = $('#stage');
+  function fit() {
+    const k = Math.min(innerWidth / 1920, innerHeight / 1080);
+    stage.style.transform = `scale(${k})`;
+    stage.style.left = (innerWidth - 1920 * k) / 2 + 'px';
+    stage.style.top = (innerHeight - 1080 * k) / 2 + 'px';
+  }
+  addEventListener('resize', fit); fit();
+  setInterval(() => {
+    const r = () => Math.round(Math.random() * 8 - 4);
+    stage.style.translate = `${r()}px ${r()}px`;
+  }, 120000);
+
+  // ---------- Clock + night dim ----------
+  let fmtHM, fmtS, fmtDate, fmtTime, fmtDayKey, fmtMins;
+  function makeFormatters() {
+    const tz = cfg.timezone, loc = cfg.locale, h12 = !!cfg.hour12;
+    fmtHM = new Intl.DateTimeFormat(loc, { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: h12 });
+    fmtS = new Intl.DateTimeFormat(loc, { timeZone: tz, second: '2-digit' });
+    fmtDate = new Intl.DateTimeFormat(loc, { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long' });
+    fmtTime = new Intl.DateTimeFormat(loc, { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: h12 });
+    fmtDayKey = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+    fmtMins = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+  makeFormatters();
+  const toMin = hm => { const [h, m] = hm.split(':').map(Number); return h * 60 + m; };
+
+  function tick() {
+    const now = new Date();
+    const hm = fmtHM.format(now).replace(/\s?[AP]M$/i, '');
+    const s = fmtS.format(now).padStart(2, '0');
+    const d = fmtDate.format(now);
+    $$('[data-hm]').forEach(e => e.textContent !== hm && (e.textContent = hm));
+    $$('[data-sec]').forEach(e => e.textContent = s);
+    $$('[data-date]').forEach(e => e.textContent !== d && (e.textContent = d));
+
+    const nd = cfg.night_dim;
+    if (nd && nd.start && nd.end) {
+      const m = toMin(fmtMins.format(now)), a = toMin(nd.start), b = toMin(nd.end);
+      const night = a <= b ? (m >= a && m < b) : (m >= a || m < b);
+      $('#dim').style.opacity = night ? String(1 - (nd.opacity ?? 0.45)) : '0';
+    }
+  }
+
+  // ---------- Weather (Open-Meteo, no key) ----------
+  const WX = c =>
+    c === 0 ? ['sun', 'Clear'] :
+    c <= 2 ? ['partly', c === 1 ? 'Mostly clear' : 'Partly cloudy'] :
+    c === 3 ? ['cloud', 'Overcast'] :
+    c <= 48 ? ['fog', 'Fog'] :
+    c <= 57 ? ['rain', 'Drizzle'] :
+    c <= 67 ? ['rain', 'Rain'] :
+    c <= 77 ? ['snow', 'Snow'] :
+    c <= 82 ? ['rain', 'Showers'] :
+    c <= 86 ? ['snow', 'Snow showers'] : ['storm', 'Thunderstorm'];
+  const icon = (name, isDay = 1) => (name === 'sun' && !isDay ? 'moon' : name);
+  const use = n => `<svg class="i"><use href="#i-${n}"/></svg>`;
+
+  function renderWeather(w) {
+    const [ic, label] = WX(w.code);
+    $$('[data-wx-icon] use').forEach(u => u.setAttribute('href', '#i-' + icon(ic, w.is_day)));
+    $$('[data-wx-temp]').forEach(e => e.textContent = Math.round(w.temp) + '°');
+    $$('[data-wx-cond]').forEach(e => e.textContent = label + ' · ' + cfg.location.name);
+    $$('[data-wx-sub]').forEach(e => e.innerHTML =
+      `<span>H ${Math.round(w.hi)}°&nbsp; L ${Math.round(w.lo)}°</span>` +
+      `<span>${use('wind')}${Math.round(w.wind)} km/h</span>` +
+      (w.pop != null ? `<span>${use('drop')}${w.pop}%</span>` : ''));
+    // 7-day forecast; each bar spans the day's low to high on the week's scale, with a dot for "now" today.
+    const fmtWd = new Intl.DateTimeFormat(cfg.locale, { weekday: 'short' });
+    const days = (w.days || []).slice(0, 7);
+    const wLo = Math.min(...days.map(d => d.lo)), wHi = Math.max(...days.map(d => d.hi)), span = (wHi - wLo) || 1;
+    const pct = v => ((v - wLo) / span * 100).toFixed(1);
+    $('#daily').innerHTML = days.map((d, i) => `<div class="day${i ? '' : ' today'}">
+      <span class="dn">${i ? esc(fmtWd.format(new Date(d.date + 'T12:00:00'))) : 'Today'}</span>${use(WX(d.code)[0])}
+      <span class="pp">${d.pop >= 20 ? d.pop + '%' : ''}</span><span class="lo">${Math.round(d.lo)}°</span>
+      <span class="bar"><i style="left:${pct(d.lo)}%;right:${(100 - pct(d.hi)).toFixed(1)}%"></i>${i ? '' : `<b style="left:${pct(Math.min(d.hi, Math.max(d.lo, w.temp)))}%"></b>`}</span>
+      <span class="hi">${Math.round(d.hi)}°</span></div>`).join('');
+    $('#hourly').innerHTML = w.hours.slice(0, 6).map(h => `
+      <div class="hour"><span class="t">${esc(h.t)}</span>${use(icon(WX(h.code)[0], h.is_day))}<span class="v">${Math.round(h.temp)}°</span></div>`).join('');
+  }
+
+  async function loadWeather() {
+    const { lat, lon } = cfg.location;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&current=temperature_2m,weather_code,wind_speed_10m,is_day` +
+      `&hourly=temperature_2m,weather_code,precipitation_probability,is_day` +
+      `&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max&timezone=${encodeURIComponent(cfg.timezone)}&forecast_days=7`;
+    try {
+      const r = await fetch(url); if (!r.ok) throw 0;
+      const d = await r.json();
+      const nowIdx = Math.max(0, d.hourly.time.findIndex(t => t >= d.current.time.slice(0, 13)));
+      const hours = [];
+      for (let i = nowIdx + 1; hours.length < 7 && i < d.hourly.time.length; i++) {
+        hours.push({ t: d.hourly.time[i].slice(11, 16), temp: d.hourly.temperature_2m[i], code: d.hourly.weather_code[i], is_day: d.hourly.is_day[i] });
+      }
+      renderWeather({
+        temp: d.current.temperature_2m, code: d.current.weather_code, wind: d.current.wind_speed_10m, is_day: d.current.is_day,
+        hi: d.daily.temperature_2m_max[0], lo: d.daily.temperature_2m_min[0],
+        pop: d.hourly.precipitation_probability[nowIdx], hours,
+        days: d.daily.time.map((t, i) => ({ date: t, hi: d.daily.temperature_2m_max[i], lo: d.daily.temperature_2m_min[i],
+          code: d.daily.weather_code[i], pop: d.daily.precipitation_probability_max[i] })),
+      });
+    } catch {
+      const h = new Date().getHours();
+      renderWeather({ temp: 14, code: 2, wind: 12, is_day: 1, hi: 17, lo: 9, pop: 10,
+        hours: [...Array(7)].map((_, i) => ({ t: String((h + i + 1) % 24).padStart(2, '0') + ':00', temp: 15 - i * 0.7, code: [2, 2, 3, 3, 61, 3, 1][i], is_day: (h + i + 1) % 24 < 17 })) });
+    }
+  }
+
+  // ---------- Sessions ----------
+  const ORDER = { waiting: 0, error: 1, working: 2, done: 3, idle: 4 };
+  const STATE_LABEL = { waiting: 'Needs you', error: 'Error', working: 'Working', done: 'Done', idle: 'Idle' };
+  const ago = sec => {
+    sec = Math.max(0, Math.floor(sec));
+    if (sec < 60) return sec + 's';
+    if (sec < 3600) return Math.floor(sec / 60) + 'm ' + String(sec % 60).padStart(2, '0') + 's';
+    return Math.floor(sec / 3600) + 'h ' + String(Math.floor(sec % 3600 / 60)).padStart(2, '0') + 'm';
+  };
+  function sessDetail(s) {
+    if (s.state === 'waiting') return { text: s.detail || 'Waiting for input', mono: false };
+    if (s.state === 'working') {
+      if (s.tool) return { text: s.tool + (s.detail ? '  ' + s.detail : ''), mono: true };
+      return { text: s.prompt || 'Thinking…', mono: false };
+    }
+    if (s.state === 'done') return { text: s.message || s.prompt || 'Finished', mono: false };
+    if (s.state === 'error') return { text: s.detail || 'Turn failed', mono: false };
+    return { text: s.prompt ? 'Last: ' + s.prompt : 'Ready', mono: false };
+  }
+  function sessHTML(s, nowSec) {
+    const d = sessDetail(s);
+    let meta = '';
+    if (s.state === 'working' && s.turn_started) meta = ago(nowSec - s.turn_started) + (s.tools ? `<span class="tc"> · ${Number(s.tools) || 0} tool${s.tools == 1 ? '' : 's'}</span>` : '');
+    else if (s.updated) meta = ago(nowSec - s.updated).replace(/ \d+s$/, '') + ' ago';
+    return `<div class="sess" data-s="${esc(s.state)}">
+      <span class="dot"></span>
+      <span class="name">${esc(s.project)}</span>
+      <span class="state">${STATE_LABEL[s.state] || esc(s.state)}<span class="mono">${meta}</span></span>
+      <span class="detail${d.mono ? ' mono' : ''}">${esc(d.text)}</span>
+    </div>`;
+  }
+  function renderSessions(list, emptyText = 'No active sessions') {
+    const nowSec = Date.now() / 1000;
+    list = [...list].sort((a, b) => (ORDER[a.state] ?? 9) - (ORDER[b.state] ?? 9) || (b.updated || 0) - (a.updated || 0));
+    const fill = (el, max) => {
+      if (!list.length) { el.innerHTML = `<div class="empty">${esc(emptyText)}</div>`; return; }
+      el.innerHTML = list.slice(0, max).map(s => sessHTML(s, nowSec)).join('') +
+        (list.length > max ? `<div class="more">+${list.length - max} more</div>` : '');
+    };
+    fill($('#sessions'), 3);
+    fill($('#rail-sessions'), 4);
+    fitRail();
+    const waiting = list.filter(s => s.state === 'waiting').length;
+    $$('[data-count]').forEach(e => e.textContent = list.length ? (waiting ? `${waiting} waiting · ` : '') + list.length + ' active' : '');
+    updateToast(list.filter(s => s.state === 'waiting'));
+  }
+
+  // ---------- Alerts ----------
+  const alertsEl = $('#alerts');
+  function showAlert({ kind, tag, title, body = '', img, icon = 'bell', ms = 20000, key }) {
+    if (key && [...alertsEl.children].some(e => e.dataset.key === key)) return null;
+    const el = document.createElement('div');
+    el.className = 'alert'; el.dataset.k = kind; if (key) el.dataset.key = key;
+    el.innerHTML = `<div class="ic">${img ? logoImg(img, '') : use(icon)}</div>
+      <div><div class="tag">${esc(tag)}</div><b>${esc(title)}</b><span>${esc(body)}</span></div>`;
+    const close = () => { el.classList.add('out'); setTimeout(() => el.remove(), 400); };
+    if (kind !== 'claude') el.addEventListener('click', close);
+    if (ms) setTimeout(close, ms);
+    alertsEl.appendChild(el);
+    while (alertsEl.children.length > 4) alertsEl.firstElementChild.remove();
+    return el;
+  }
+  // The Claude "needs you" alert only shows over a video; in ambient mode the sessions card covers it.
+  function updateToast(waiting) {
+    let el = [...alertsEl.children].find(e => e.dataset.key === 'claude');
+    if (!waiting.length || !document.body.classList.contains('match')) { if (el) el.remove(); return; }
+    const s = waiting[0];
+    const title = waiting.length > 1 ? `${waiting.length} sessions need you` : `${s.project} needs you`;
+    const body = s.detail || 'Waiting for input';
+    if (!el) { el = showAlert({ kind: 'claude', key: 'claude', tag: 'Claude Code', title, body, ms: 0 }); alertsEl.prepend(el); return; }
+    el.querySelector('b').textContent = title; el.querySelector('span').textContent = body;
+  }
+
+  // ---------- Agenda ----------
+  let cal = null;
+  function calEvents() {
+    if (!cal || !cal.enabled) return [];
+    const now = Date.now();
+    return (cal.events || []).map(e => ({ ...e, s: new Date(e.start), e: new Date(e.end || e.start) }))
+      .filter(e => e.e.getTime() > now - 3 * 3600e3).sort((a, b) => a.s - b.s);
+  }
+  function agendaHTML() {
+    const now = Date.now(), events = calEvents();
+    const today = fmtDayKey.format(new Date()), tomorrow = fmtDayKey.format(new Date(now + 864e5));
+    const group = key => events.filter(e => fmtDayKey.format(e.s) === key);
+    const row = e => {
+      const past = e.e.getTime() < now, live = e.s.getTime() <= now && !past;
+      const when = e.all_day ? 'All day' : fmtTime.format(e.s);
+      return `<div class="ev fr${past ? ' past' : ''}${live ? ' now' : ''}"><span class="when">${when}</span>
+        <span class="what">${esc(e.title)}${e.location ? `<span class="where">${esc(e.location)}</span>` : ''}</span></div>`;
+    };
+    const section = (title, list) => `<div class="lg">${title}</div>${
+      list.length ? list.map(row).join('') : '<div class="empty fr">Nothing scheduled</div>'}`;
+    return section('Today', group(today)) + section('Tomorrow', group(tomorrow));
+  }
+  // Next: the sooner of your next calendar event and your teams' next match (or one being played now).
+  function renderNext() {
+    const now = Date.now(), today = fmtDayKey.format(new Date());
+    const dayPrefix = d => fmtDayKey.format(d) === today ? '' : fmtDayKey.format(d) === fmtDayKey.format(new Date(now + 86400e3)) ? 'Tomorrow ' : fmtShortDay().format(d) + ' ';
+    const cands = [];
+    if (cal && cal.enabled) {
+      const nx = calEvents().find(e => !e.all_day && e.e.getTime() > now);
+      if (nx) cands.push({ t: nx.s.getTime(), icon: 'cal', what: esc(nx.title), when: nx.s.getTime() <= now ? 'Now · until ' + fmtTime.format(nx.e)
+        : (fmtDayKey.format(nx.s) === today ? '' : 'Tomorrow ') + fmtTime.format(nx.s) + ' · in ' + ago((nx.s - now) / 1000).replace(/ \d+s$/, '') });
+    }
+    if (myteams) {
+      // Upcoming only: a match being played already shows in the scores card.
+      const fx = myteams.teams.map(t => t.next).filter(n => n && new Date(n.date).getTime() > now)
+        .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+      if (fx) {
+        const d = new Date(fx.date);
+        cands.push({ t: d.getTime(), icon: 'ball', what: `${esc(fx.home.team)} – ${esc(fx.away.team)}`,
+          when: dayPrefix(d) + fmtTime.format(d) + ' · ' + untilText(d - now) });
+      }
+    }
+    const pick = cands.sort((a, b) => a.t - b.t)[0];
+    $('#next').innerHTML = pick
+      ? `<div class="label">${use(pick.icon)}Next</div><div class="what">${pick.what}</div><div class="when">${pick.when}</div>`
+      : `<div class="label">${use('cal')}Next</div><div class="empty" style="font-size:17px">Nothing coming up</div>`;
+  }
+
+  // ---------- Formatting helpers ----------
+  let markets = null, footy = null, tennis = null;
+  const nf = (v, d) => v == null ? '–' : new Intl.NumberFormat(cfg.locale, { minimumFractionDigits: d, maximumFractionDigits: d }).format(v);
+  const chg = c => c == null ? '' : `<div class="chg ${c > 0 ? 'up' : c < 0 ? 'down' : 'flat'}">${c > 0 ? '+' : ''}${nf(c, 2)}%</div>`;
+  const shortName = m => ({ USD: 'USD', EUR: 'EUR', GBP: 'GBP', GRA: 'Gold', CEYREKALTIN: 'Quarter' }[m.code] || m.code);
+  const mkDigits = m => (m.sell != null && m.sell >= 1000 ? 0 : 2);
+  const isToday = d => fmtDayKey.format(new Date(d)) === fmtDayKey.format(new Date());
+
+  // ---------- Finance card panels ----------
+  // 30-day trend line; today's live value is added as the last point.
+  function series(code, current) {
+    const h = ((markets && markets.history) || {})[code] || [];
+    const today = fmtDayKey.format(new Date());
+    const pts = h.filter(p => p[0] !== today).map(p => p[1]);
+    if (current != null) pts.push(current);
+    return pts;
+  }
+  function spark(vs, w = 150, h = 44) {
+    if (!vs || vs.length < 3) return '<div></div>';
+    const lo = Math.min(...vs), hi = Math.max(...vs), span = hi - lo || 1;
+    const xy = vs.map((v, i) => [3 + (i / (vs.length - 1)) * (w - 8), h - 4 - ((v - lo) / span) * (h - 8)]);
+    const d = xy.map((q, i) => (i ? 'L' : 'M') + q[0].toFixed(1) + ' ' + q[1].toFixed(1)).join('');
+    const ch = (vs[vs.length - 1] - vs[0]) / vs[0] * 100, cls = ch > 0.05 ? 'up' : ch < -0.05 ? 'down' : 'flat';
+    const [ex, ey] = xy[xy.length - 1];
+    return `<div class="spark ${cls}"><svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><path d="${d}"/><circle cx="${ex}" cy="${ey}" r="3.2"/></svg>
+      <span>30d ${ch > 0 ? '+' : ''}${nf(ch, 1)}%</span></div>`;
+  }
+  function marketsHTML() {
+    const compact = markets.items.length > 3 ? ' sm' : '';
+    return markets.items.map(m => `<div class="mk fr${compact}">
+      <div><div class="n">${esc(m.name)}</div><div class="b">Buy ${nf(m.buy, mkDigits(m))}</div></div>
+      ${spark(series(m.code, m.sell))}
+      <div><div class="v">${nf(m.sell, mkDigits(m))}<small>TL</small></div>${chg(m.change)}</div>
+    </div>`).join('');
+  }
+  const usd = v => v == null ? '' : '$' + nf(v, v >= 1000 ? 0 : 2);
+  function cryptoStocksHTML() {
+    const c = (markets.crypto || []).map(m => `<div class="mk sm fr">
+      <div><div class="n">${esc(m.name)}</div><div class="b">${esc(m.code)} · ${usd(m.usd)}</div></div>
+      ${spark(series(m.code, m.sell))}
+      <div><div class="v">${nf(m.sell, mkDigits(m))}<small>TL</small></div>${chg(m.change)}</div></div>`).join('');
+    const st = (markets.stocks || []).map(m => `<div class="mk sm fr">
+      <div><div class="n">${esc(m.name)}</div><div class="b">${esc(m.code)}${m.open ? ' · open' : ''}</div></div><div></div>
+      <div><div class="v">${nf(m.sell, 2)}<small>${esc(m.currency)}</small></div>${chg(m.change)}</div></div>`).join('');
+    return (c && st ? '<div class="mk-sec">Crypto · 24h</div>' : '') + c + (c && st ? '<div class="mk-sec">Stocks</div>' : '') + st;
+  }
+  // News pages through its stories: each time a group comes round again it
+  // continues after the last headline that fitted.
+  let news = null;
+  const newsCursor = {};
+  const agoShort = t => {
+    if (!t) return '';
+    const m = Math.max(0, Math.round((Date.now() / 1000 - t) / 60));
+    return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.floor(m / 60)} h ago` : `${Math.floor(m / 1440)} d ago`;
+  };
+  function newsPanel(g, i) {
+    const key = 'nw:' + i, items = g.items.slice(0, 12);
+    const st = newsCursor[key] || (newsCursor[key] = { start: 0, next: 0 });
+    return {
+      key, label: g.name, icon: i === 0 ? 'globe' : 'news', weight: 1.25,
+      html: fresh => {
+        if (fresh) st.start = st.next >= items.length ? 0 : st.next;
+        return items.slice(st.start, st.start + 4).map(n => `<div class="nw fr">
+          <div class="meta">${esc(n.source)}${n.time ? ' · ' + agoShort(n.time) : ''}</div>
+          <div class="hd">${esc(n.title)}</div>${n.summary ? `<div class="sm">${esc(n.summary)}</div>` : ''}</div>`).join('');
+      },
+      after: body => { st.next = st.start + Math.max(1, body.querySelectorAll('.nw').length); },
+    };
+  }
+  // ---------- Apple Reminders ----------
+  let rem = null;
+  const fmtShortDay = () => new Intl.DateTimeFormat(cfg.locale, { timeZone: cfg.timezone, weekday: 'short', day: 'numeric', month: 'short' });
+  const dueAt = r => { const d = new Date(r.due); return r.all_day ? d.getTime() + 9 * 3600e3 : d.getTime(); };  // all-day ones alert at 09:00
+  function remindersHTML() {
+    const now = Date.now(), today = fmtDayKey.format(new Date()), tomorrow = fmtDayKey.format(new Date(now + 864e5));
+    const groups = [['Overdue', []], ['Today', []], ['Tomorrow', []], ['Coming up', []]];
+    for (const r of rem.items) {
+      const d = new Date(r.due), key = fmtDayKey.format(d);
+      const late = r.all_day ? key < today : d.getTime() < now;
+      groups[late ? 0 : key === today ? 1 : key === tomorrow ? 2 : 3][1].push(r);
+    }
+    const row = (r, late, later) => {
+      const d = new Date(r.due);
+      const when = later ? fmtShortDay().format(d) : r.all_day ? 'All day' : fmtTime.format(d);
+      return `<div class="ev fr${late ? ' late' : ''}"><span class="when">${esc(when)}</span>
+        <span class="what">${esc(r.name)}<span class="where">${esc(r.list)}${r.flagged ? ' · <span class="flag">flagged</span>' : ''}</span></span></div>`;
+    };
+    return groups.filter(g => g[1].length).map(([t, list], gi) =>
+      `<div class="lg">${t}</div>${list.map(r => row(r, gi === 0, gi === 3 || (gi === 0 && !isToday(r.due)))).join('')}`).join('');
+  }
+  function checkReminders() {
+    if (!rem || !rem.items) return;
+    const now = Date.now(), shown = store.get('remShown') || [];
+    for (const r of rem.items) {
+      const at = dueAt(r), key = r.id + '@' + r.due;
+      if (at <= now && now - at < 12 * 3600e3 && !shown.includes(key)) {
+        shown.push(key);
+        showAlert({ kind: 'reminder', tag: 'Reminder · ' + r.list, title: r.name, body: r.all_day ? 'Due today' : 'Due ' + fmtTime.format(new Date(r.due)), icon: 'check', ms: 120000 });
+      }
+    }
+    store.set('remShown', shown.slice(-100));
+  }
+
+  function finPanels() {
+    const p = [];
+    if (markets && markets.items && markets.items.length) p.push({ key: 'mk', label: 'Markets', icon: 'trend', html: marketsHTML });
+    if (markets && ((markets.crypto || []).length || (markets.stocks || []).length))
+      p.push({ key: 'cs', label: (markets.stocks || []).length ? 'Crypto & stocks' : 'Crypto', icon: 'coin', html: cryptoStocksHTML });
+    if (rem && rem.enabled && rem.items && rem.items.length) p.push({ key: 'rm', label: 'Reminders', icon: 'check', html: remindersHTML });
+    if (news) news.groups.forEach((g, i) => { if (g.items.length) p.push(newsPanel(g, i)); });
+    if (cal && cal.enabled) p.push({ key: 'ag', label: 'Agenda', icon: 'cal', html: agendaHTML });
+    return p;
+  }
+
+  // ---------- Sports card panels ----------
+  // ---------- Followed teams ----------
+  let follow = [], myteams = null;
+  const followed = id => !!id && follow.some(t => t.id === String(id));
+  const mineMatch = m => followed(m.home && m.home.id) || followed(m.away && m.away.id);
+  const teamName = t => followed(t.id) ? `<b>${esc(t.team)}</b>` : esc(t.team);
+  function matchRow(m) {
+    const st = m.state === 'in' ? esc(m.detail) : m.state === 'post' ? 'FT' : fmtTime.format(new Date(m.date));
+    const sc = m.state === 'pre' ? 'vs' : `${esc(m.home.score)} – ${esc(m.away.score)}`;
+    return `<div class="mt fr ${m.state === 'in' ? 'live' : esc(m.state)}${mineMatch(m) ? ' me' : ''}"><span class="st">${st}</span>
+      <span class="h">${teamName(m.home)}</span><span class="sc">${sc}</span><span class="a">${teamName(m.away)}</span></div>`;
+  }
+  const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' }[n % 10] || 'th'));
+  const untilText = ms => { const h = ms / 3600e3; return h < 1 ? `in ${Math.max(1, Math.round(ms / 60e3))} min` : h < 36 ? `in ${Math.round(h)} h` : `in ${Math.round(h / 24)} days`; };
+  // Live teams first, then today's, then the soonest fixtures. With many teams the
+  // panel pages through them, continuing where it left off each round.
+  const myCursor = { start: 0, next: 0 };
+  function myTeamsHTML(fresh) {
+    const now = Date.now();
+    const today = footy ? footballToday() : [];
+    const liveOf = t => today.find(m => m.state === 'in' && (m.home.id === t.id || m.away.id === t.id));
+    const rank = t => liveOf(t) ? 0 : t.next && isToday(t.next.date) ? 1 : 2;
+    const teams = [...(myteams ? myteams.teams : [])].sort((a, b) => rank(a) - rank(b) ||
+      ((a.next ? new Date(a.next.date) : Infinity) - (b.next ? new Date(b.next.date) : Infinity)));
+    if (fresh) myCursor.start = myCursor.next >= teams.length ? 0 : myCursor.next;
+    return teams.slice(myCursor.start, myCursor.start + 14).map(t => {
+      const st = t.standings[0];
+      const sub = st ? `${ordinal(st.rank)} · ${st.pts} pts · ${esc(st.league)}` : '';
+      const live = liveOf(t);
+      let nx;
+      if (live) nx = `<div class="nx live"><b>${esc(live.home.score)} – ${esc(live.away.score)} · ${esc(live.detail)}</b>vs ${esc(live.home.id === t.id ? live.away.team : live.home.team)}</div>`;
+      else if (t.next) {
+        const d = new Date(t.next.date), home = t.next.home.id === t.id;
+        const when = isToday(t.next.date) ? 'Today ' + fmtTime.format(d) : fmtShortDay().format(d) + ' ' + fmtTime.format(d);
+        nx = `<div class="nx"><b>${esc(when)}</b>${home ? 'vs' : 'at'} ${esc(home ? t.next.away.team : t.next.home.team)} · ${untilText(d - now)}</div>`;
+      } else nx = '<div class="nx">No fixture found</div>';
+      return `<div class="myt fr">${t.logo ? logoImg(t.logo, '') : '<span></span>'}<div class="nm">${esc(t.name)}<small>${sub}</small></div>${nx}</div>`;
+    }).join('');
+  }
+  const stateRank = s => (s === 'in' ? 0 : s === 'pre' ? 1 : 2);
+  function footballToday() {
+    return footy.leagues.flatMap((l, i) => l.matches.filter(m => m.state === 'in' || isToday(m.date)).map(m => ({ ...m, lg: l.name, logo: l.logo, lgi: i })));
+  }
+  function grouped(items, rowFn) {
+    let out = '', last = null;
+    for (const m of items) {
+      if (m.lg !== last) { out += `<div class="lg">${m.logo ? logoImg(m.logo, '') : ''}${esc(m.lg)}</div>`; last = m.lg; }
+      out += rowFn(m);
+    }
+    return out;
+  }
+  function footballTodayHTML() {
+    // Your teams' matches first, then live, upcoming, finished.
+    const order = (a, b) => (mineMatch(b) - mineMatch(a)) || stateRank(a.state) - stateRank(b.state) || new Date(a.date) - new Date(b.date);
+    const all = footballToday().sort(order).slice(0, 18);
+    const lgOrder = [...new Set(all.map(m => m.lg))];  // leagues with live games first
+    return grouped(all.sort((a, b) => lgOrder.indexOf(a.lg) - lgOrder.indexOf(b.lg) || order(a, b)), matchRow);
+  }
+  function tableHTML(l) {
+    const t = l.table, z = l.zones || { top: 4, mid: 0, bottom: 3 };
+    const split = z.bottom && t.length > 12;
+    const bottom = split ? t.slice(-z.bottom) : [];
+    // Fit as many rows as the card has room for (rows are ~33px, header ~30px).
+    const cap = Math.max(10, Math.floor((($('#sp-body').clientHeight || 400) - 30) / 33));
+    if (t.length <= cap) return tableRows(l, t, z, t, true);  // whole table: never trim the bottom
+    let topN = split ? cap - bottom.length - 1 : cap;
+    // Followed teams outside the top block still get a row (with a gap before it).
+    const outside = n => t.filter(r => followed(r.id) && r.rank > n && !bottom.includes(r));
+    if (outside(topN).length) topN -= outside(topN).length;  // gap rows are short, so no extra row needed for them
+    const rows = [...t.slice(0, topN), ...outside(topN), ...bottom].sort((a, b) => a.rank - b.rank);
+    return tableRows(l, t, z, rows, split);
+  }
+  function tableRows(l, t, z, rows, split) {
+    const cls = r => [r.rank <= z.top ? 'zone' : r.rank <= z.mid ? 'mid' : (z.bottom && r.rank > t.length - z.bottom) ? 'drop' : '',
+      followed(r.id) ? 'me' : '', split ? '' : 'fr'].join(' ');
+    const row = r => `<tr class="${cls(r)}"><td class="r">${r.rank}</td><td class="t">${esc(r.team)}</td><td>${r.played}</td>
+      <td>${r.w ?? ''}</td><td>${r.d ?? ''}</td><td>${r.l ?? ''}</td><td>${r.gd > 0 ? '+' : ''}${r.gd}</td><td class="pts">${r.pts}</td></tr>`;
+    let body = '';
+    rows.forEach((r, i) => { if (i && r.rank > rows[i - 1].rank + 1) body += '<tr class="gap"><td colspan="8"></td></tr>'; body += row(r); });
+    return `<table class="tbl"><colgroup><col class="r"><col><col class="n"><col class="n"><col class="n"><col class="n"><col class="g"><col class="pts"></colgroup>
+      <tr><th></th><th class="t">Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr>${body}</table>`;
+  }
+  function tennisMatches(tour) {
+    const now = Date.now();
+    let all = tour.tournaments.flatMap(tn => tn.matches.map(m => ({ ...m, lg: tn.name })))
+      .filter(m => m.state === 'in' || (m.state === 'pre' && new Date(m.date) - now < 24 * 3600e3) || (m.state === 'post' && now - new Date(m.date) < 30 * 3600e3));
+    const main = all.filter(m => !/^Q/.test(m.round));
+    if (main.length) all = main;
+    const order = (a, b) => stateRank(a.state) - stateRank(b.state) ||
+      (a.state === 'post' ? new Date(b.date) - new Date(a.date) : new Date(a.date) - new Date(b.date));
+    all.sort(order);
+    const tOrder = [...new Set(all.map(m => m.lg))];
+    return all.slice(0, 14).sort((a, b) => tOrder.indexOf(a.lg) - tOrder.indexOf(b.lg) || order(a, b));
+  }
+  function tennisRow(m) {
+    const pl = (p, other) => {
+      const sets = m.state === 'pre' ? '' : p.sets.map((g, i) => `<b class="${g > (other.sets[i] ?? -1) ? 'w' : ''}">${g}</b>`).join('');
+      return `<div class="pl${p.winner ? ' win' : ''}"><span class="nm">${esc(p.name)}${p.rank ? `<i>${p.rank}</i>` : ''}</span><span class="sets">${sets}</span></div>`;
+    };
+    const [a, b] = m.players;
+    const right = m.state === 'pre' ? `<span class="when">${isToday(m.date) ? '' : 'Tmrw '}${fmtTime.format(new Date(m.date))}</span>` : '';
+    return `<div class="tm fr ${m.state === 'in' ? 'live' : esc(m.state)}"><span class="rd">${esc(m.round)}</span>${right}${pl(a, b)}${pl(b, a)}</div>`;
+  }
+  function rankingsHTML(tour) {
+    const row = r => {
+      const mv = r.previous ? r.previous - r.rank : 0;
+      return `<tr class="fr"><td class="r">${r.rank}</td><td class="t">${esc(r.name)}</td><td>${nf(r.points, 0)}</td>
+        <td class="${mv > 0 ? 'up' : mv < 0 ? 'down' : 'flat'}">${mv > 0 ? '+' + mv : mv < 0 ? mv : '–'}</td></tr>`;
+    };
+    return `<table class="tbl"><colgroup><col class="r"><col><col class="pp"><col class="mv"></colgroup>
+      <tr><th></th><th class="t">Player</th><th>Points</th><th>+/–</th></tr>${tour.rankings.slice(0, 20).map(row).join('')}</table>`;
+  }
+  // Panels are grouped by sport; the header tabs show which sport is on.
+  const SPORTS = [['football', 'Football'], ['tennis', 'Tennis']];
+  // One round: your teams, today's football, ONE league table (they take turns),
+  // tennis matches, ONE rankings table (ATP/WTA take turns). Keeps a round near a minute.
+  let tableTurn = 0, rankTurn = 0;
+  function sportPanels() {
+    const p = [];
+    if (footy) {
+      const today = footballToday(), live = today.filter(m => m.state === 'in').length;
+      if (follow.length && myteams && myteams.teams.length) {
+        const mineLive = today.filter(m => m.state === 'in' && mineMatch(m)).length;
+        const n = myteams.teams.length;
+        p.push({ sport: 'football', key: 'my', label: n > 6 ? `Your teams · ${n}` : 'Your teams', icon: 'star', live: mineLive, weight: n > 6 ? 1.25 : 1,
+          html: myTeamsHTML, after: body => { myCursor.next = myCursor.start + Math.max(1, body.querySelectorAll('.myt').length); } });
+      }
+      if (today.length) p.push({ sport: 'football', key: 'ft', label: 'Football today', icon: 'ball', live, weight: 1.25, html: footballTodayHTML });
+      // Leagues with a followed team come first in the turn order.
+      const hasMine = l => l.table.some(r => followed(r.id)) ? 0 : 1;
+      const tables = footy.leagues.filter(l => l.table.length).map((l, i) => [l, i])
+        .sort((x, y) => hasMine(x[0]) - hasMine(y[0]) || x[1] - y[1]).map(x => x[0]);
+      if (tables.length) {
+        const l = tables[tableTurn % tables.length];
+        p.push({ sport: 'football', key: 't:' + l.id, slot: 'table', label: l.name, icon: 'table', logo: l.logo, weight: 1.4,
+          live: l.matches.filter(m => m.state === 'in').length, html: () => tableHTML(l) });
+      }
+    }
+    if (tennis) {
+      tennis.tours.forEach(t => {
+        const ms = tennisMatches(t); if (!ms.length) return;
+        p.push({ sport: 'tennis', key: 'tn:' + t.id, label: 'Matches', badge: t.name, weight: 1.25,
+          live: ms.filter(m => m.state === 'in').length, html: () => grouped(tennisMatches(t), tennisRow) });
+      });
+      const ranked = tennis.tours.filter(t => t.rankings.length);
+      if (ranked.length) {
+        const t = ranked[rankTurn % ranked.length];
+        p.push({ sport: 'tennis', key: 'rk:' + t.id, slot: 'rank', label: 'Rankings', badge: t.name, weight: 1.25, html: () => rankingsHTML(t) });
+      }
+    }
+    return p;
+  }
+  // When a turn-taking panel has been shown, the next round shows the next league / tour.
+  function sportLeave(p) {
+    if (p.slot === 'table') tableTurn++;
+    if (p.slot === 'rank') rankTurn++;
+  }
+
+  // ---------- Rotation ----------
+  // Drop trailing rows (.fr) until the panel fits, then any league header left without rows.
+  function fitPanel(body) {
+    const rows = [...body.querySelectorAll('.fr')];
+    const dropEmptyHeaders = () => body.querySelectorAll('.lg').forEach(h => { const n = h.nextElementSibling; if (!n || n.classList.contains('lg')) h.remove(); });
+    while (body.scrollHeight > body.clientHeight + 1 && rows.length > 1) { rows.pop().remove(); dropEmptyHeaders(); }
+    dropEmptyHeaders();
+  }
+  const logoImg = (src, cls) => `<img class="${cls}" src="${esc(src)}" alt="" onerror="this.remove()">`;
+  function panelHead(p) {
+    const mark = p.logo ? logoImg(p.logo, 'lgo') : p.badge ? `<span class="badge">${esc(p.badge)}</span>` : use(p.icon);
+    const live = p.live ? `<span class="livepill"><i></i>LIVE${p.live > 1 ? ' · ' + p.live : ''}</span>` : '';
+    return `${mark}<span>${esc(p.label)}</span>${live}`;
+  }
+  // Each card runs its own timer: a panel stays up for rotate_seconds × its weight
+  // (tables and news a bit longer). The two cards never change within 3 s of each other.
+  let lastSwitch = 0;
+  const baseMs = () => Math.max(4, Number(cfg.rotate_seconds) || 12) * 1000;
+  function makeRotator(prefix, build, opts = {}) {
+    const r = { idx: 0, key: null, painted: '' };
+    const lab = $('#' + prefix + '-label'), dots = $('#' + prefix + '-dots'), body = $('#' + prefix + '-body');
+    const card = body.closest('.ticker');
+    r.draw = animate => {
+      const list = build();
+      if (!list.length) { dots.innerHTML = ''; body.innerHTML = `<div class="empty">${online === false ? 'Server offline' : 'Loading…'}</div>`; r.painted = ''; return; }
+      const keep = list.findIndex(p => p.key === r.key);
+      r.idx = keep >= 0 ? keep : r.idx % list.length;
+      const p = list[r.idx]; r.key = p.key; r.current = p;
+      const paint = () => {
+        const head = panelHead(p), html = p.html(animate);
+        let tabs = '';
+        if (opts.tabs) {
+          const have = SPORTS.filter(([id]) => list.some(x => x.sport === id));
+          tabs = have.length > 1 ? have.map(([id, name]) => `<button class="sp-tab${p.sport === id ? ' on' : ''}" data-sport="${id}">${name}</button>`).join('') : '';
+        } else tabs = list.length > 1 ? list.map((_, i) => `<i class="${i === r.idx ? 'on' : ''}"></i>`).join('') : '';
+        // A data refresh that changes nothing shouldn't touch the DOM (no logo flicker).
+        const sig = head + '\u0000' + tabs + '\u0000' + html;
+        if (!animate && sig === r.painted) return;
+        r.painted = sig;
+        if (lab.innerHTML !== head) lab.innerHTML = head;
+        if (dots.innerHTML !== tabs) dots.innerHTML = tabs;
+        dots.style.display = tabs ? '' : 'none';
+        body.innerHTML = html;
+        fitPanel(body);
+        if (p.after) p.after(body);
+      };
+      clearTimeout(r.pending);
+      if (!animate) { card.classList.remove('fade'); return paint(); }
+      card.classList.add('fade');
+      r.pending = setTimeout(() => { paint(); card.classList.remove('fade'); }, 450);
+    };
+    r.schedule = (extra = 0) => {
+      clearTimeout(r.timer);
+      const w = (r.current && r.current.weight) || 1;
+      r.timer = setTimeout(r.auto, baseMs() * w + extra);
+    };
+    r.auto = () => {
+      const since = Date.now() - lastSwitch;
+      if (since < 3000) return r.schedule(3000 - since - baseMs() * ((r.current && r.current.weight) || 1));
+      r.next();
+    };
+    r.next = () => {
+      const before = build();
+      if (before.length < 2) return r.schedule();
+      if (opts.onLeave && before[r.idx]) opts.onLeave(before[r.idx]);
+      const n = build().length;
+      r.idx = (r.idx + 1) % n; r.key = null; lastSwitch = Date.now();
+      r.draw(true); r.schedule();
+    };
+    r.jump = pred => { const i = build().findIndex(pred); if (i >= 0) { r.idx = i; r.key = null; lastSwitch = Date.now(); r.draw(true); r.schedule(); } };
+    return r;
+  }
+  const finR = makeRotator('fin', finPanels), spR = makeRotator('sp', sportPanels, { tabs: true, onLeave: sportLeave });
+  // The sports card grows or shrinks as Claude sessions come and go: redraw so it fills the new height.
+  let lastSpH = 0, refitTimer = null;
+  new ResizeObserver(() => {
+    const h = $('#sp-body').clientHeight;
+    if (Math.abs(h - lastSpH) < 8) return;
+    lastSpH = h; clearTimeout(refitTimer);
+    refitTimer = setTimeout(() => { spR.painted = ''; spR.draw(false); }, 250);
+  }).observe($('#sp-body'));
+  // Clicking a card skips to its next panel; a sport tab jumps to that sport.
+  $('#fin-body').closest('.ticker').addEventListener('click', e => { if (!e.target.closest('button')) finR.next(); });
+  $('#sp-body').closest('.ticker').addEventListener('click', e => {
+    const tab = e.target.closest('.sp-tab');
+    if (tab) return spR.jump(x => x.sport === tab.dataset.sport);
+    if (!e.target.closest('button')) spR.next();
+  });
+  function startRotation() {
+    finR.schedule();
+    spR.schedule(-baseMs() / 2);  // start half a step apart
+  }
+  function drawRailMarkets() {
+    const el = $('#rail-mk');
+    if (!markets || !markets.items || !markets.items.length) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    const shown = markets.items.slice(0, 4);
+    el.style.gridTemplateColumns = `repeat(${shown.length}, 1fr)`;
+    el.innerHTML = shown.map(m => `<div class="rm"><span class="k">${esc(shortName(m))}</span>
+      <span class="x">${nf(m.sell, mkDigits(m))}</span>${chg(m.change)}</div>`).join('');
+  }
+  // Rail scores: live matches and your teams' games today. Your teams first, then live, upcoming, finished.
+  let railSig = '';
+  function drawRailScores() {
+    const el = $('#rail-sc');
+    const list = footy ? footballToday().filter(m => m.state === 'in' || mineMatch(m)) : [];
+    list.sort((a, b) => (mineMatch(b) - mineMatch(a)) || stateRank(a.state) - stateRank(b.state) || new Date(a.date) - new Date(b.date));
+    const live = list.filter(m => m.state === 'in').length;
+    const nm = t => { const n = esc(t.abbr || t.team); return followed(t.id) ? `<b>${n}</b>` : n; };
+    const html = !list.length ? '' : `<div class="label">${use('ball')}${live ? `Live · ${live}` : 'Today'}</div>` + list.slice(0, 10).map(m => {
+      const st = m.state === 'in' ? esc(m.detail) : m.state === 'post' ? 'FT' : fmtTime.format(new Date(m.date));
+      const sc = m.state === 'pre' ? 'vs' : `${esc(m.home.score)} – ${esc(m.away.score)}`;
+      return `<div class="rs ${m.state === 'in' ? 'live' : esc(m.state)}${mineMatch(m) ? ' me' : ''}" title="${esc(m.lg)}"><span class="st">${st}</span>
+        <span class="h">${nm(m.home)}</span><span class="sc">${sc}</span><span class="a">${nm(m.away)}</span></div>`;
+    }).join('') + `<div class="more" data-total="${list.length}"></div>`;
+    // Only rebuild when something changed, so the live dots keep pulsing smoothly.
+    if (html !== railSig) { railSig = html; el.innerHTML = html; }
+    el.style.display = html ? '' : 'none';
+    fitRail();
+  }
+  // Show as many score rows as fit above the buttons; the sessions card keeps its full size.
+  function fitRail() {
+    const el = $('#rail-sc'), rail = $('.rail');
+    if (!document.body.classList.contains('match') || el.style.display === 'none') return;
+    const rows = [...el.querySelectorAll('.rs')], more = el.querySelector('.more');
+    const total = Number(more.dataset.total);
+    rows.forEach(r => { r.hidden = false; });
+    let shown = rows.length;
+    const setMore = () => { const n = total - shown; more.textContent = n > 0 ? `+${n} more` : ''; more.hidden = n <= 0; };
+    setMore();
+    while (shown > 1 && rail.scrollHeight > rail.clientHeight) { rows[--shown].hidden = true; setMore(); }
+  }
+  // ---------- Goal, full-time and kick-off alerts ----------
+  const prevScores = new Map();
+  let scoresPrimed = false;
+  function checkGoals() {
+    const all = footy.leagues.flatMap(l => l.matches.map(m => ({ ...m, lg: l.name, logo: l.logo })));
+    for (const m of all) {
+      const key = m.id || m.home.team + '|' + m.away.team + '|' + m.date;
+      const cur = { h: Number(m.home.score) || 0, a: Number(m.away.score) || 0, state: m.state };
+      const prev = prevScores.get(key);
+      prevScores.set(key, cur);
+      const watch = cfg.goal_alerts === 'all' || mineMatch(m);
+      if (!scoresPrimed || !prev || !watch) continue;
+      const line = `${m.home.team} ${cur.h} – ${cur.a} ${m.away.team}`;
+      const side = cur.h > prev.h ? m.home : cur.a > prev.a ? m.away : null;
+      if (side && m.state === 'in') {
+        const g = [...(m.goals || [])].reverse().find(x => x.team_id === side.id);
+        const extra = g && g.kind && !/^goal$/i.test(g.kind) ? ' · ' + g.kind : '';
+        showAlert({ kind: 'goal', tag: 'Goal · ' + m.lg, title: line, body: g ? `${g.player} ${g.clock}${extra}` : `${side.team} scored`,
+          img: m.logo, icon: 'ball', key: `goal:${key}:${cur.h}-${cur.a}`, ms: 30000 });
+      }
+      if (prev.state === 'pre' && cur.state === 'in') showAlert({ kind: 'kickoff', tag: 'Kick-off · ' + m.lg, title: `${m.home.team} – ${m.away.team}`, body: 'The match has started', img: m.logo, icon: 'ball' });
+      if (prev.state === 'in' && cur.state === 'post') showAlert({ kind: 'ft', tag: 'Full time · ' + m.lg, title: line, img: m.logo, icon: 'ball', ms: 30000 });
+    }
+    scoresPrimed = true;
+  }
+  function checkKickoffs() {
+    const mins = Number(cfg.kickoff_reminder_minutes ?? 15);
+    if (!mins || !follow.length) return;
+    const now = Date.now(), shown = store.get('kick') || [], cands = [];
+    if (footy) footy.leagues.forEach(l => l.matches.forEach(m => {
+      if (m.state === 'pre' && mineMatch(m)) cands.push({ id: m.id, date: m.date, home: m.home.team, away: m.away.team, lg: l.name, logo: l.logo });
+    }));
+    if (myteams) myteams.teams.forEach(t => t.next && cands.push({ id: t.next.id, date: t.next.date, home: t.next.home.team, away: t.next.away.team, lg: t.next.league, logo: t.next.logo }));
+    for (const c of cands) {
+      const dt = new Date(c.date) - now;
+      if (c.id && dt > 0 && dt <= mins * 60e3 && !shown.includes(c.id)) {
+        shown.push(c.id);
+        showAlert({ kind: 'kickoff', tag: `Starts in ${Math.max(1, Math.round(dt / 60e3))} min · ${c.lg}`, title: `${c.home} – ${c.away}`,
+          body: 'Kick-off ' + fmtTime.format(new Date(c.date)), img: c.logo, icon: 'ball', ms: 90000 });
+      }
+    }
+    store.set('kick', shown.slice(-60));
+  }
+
+  // ---------- Team picker ----------
+  let pkLeague = null, saveTimer = null;
+  function drawPicker() {
+    const leagues = (footy ? footy.leagues : []).filter(l => l.table.length);
+    if (!leagues.length) { $('#pk-grid').innerHTML = '<div class="empty">Loading teams…</div>'; return; }
+    if (!leagues.some(l => l.id === pkLeague)) pkLeague = leagues[0].id;
+    $('#pk-tabs').innerHTML = leagues.map(l => `<button class="pk-tab${l.id === pkLeague ? ' on' : ''}" data-lg="${esc(l.id)}">${l.logo ? logoImg(l.logo, '') : ''}${esc(l.name)}</button>`).join('');
+    const lg = leagues.find(l => l.id === pkLeague);
+    $('#pk-grid').innerHTML = [...lg.table].sort((a, b) => a.team.localeCompare(b.team)).map(r => `<button class="pk-team${followed(r.id) ? ' on' : ''}" data-team="${esc(r.id)}" data-name="${esc(r.full || r.team)}">
+      ${r.logo ? logoImg(r.logo, '') : ''}<span class="nm">${esc(r.full || r.team)}</span>${use('star')}</button>`).join('');
+  }
+  function openPicker() { drawPicker(); $('#picker').hidden = false; }
+  function closePicker() { $('#picker').hidden = true; }
+  $('#picker').addEventListener('click', e => {
+    if (e.target.id === 'picker') return closePicker();
+    const tab = e.target.closest('.pk-tab');
+    if (tab) { pkLeague = tab.dataset.lg; return drawPicker(); }
+    const b = e.target.closest('.pk-team'); if (!b) return;
+    const id = b.dataset.team;
+    follow = followed(id) ? follow.filter(t => t.id !== id) : [...follow, { id, name: b.dataset.name }];
+    b.classList.toggle('on', followed(id));
+    updateStar();
+    clearTimeout(saveTimer); saveTimer = setTimeout(savePrefs, 500);
+  });
+  const updateStar = () => $('#sp-star').classList.toggle('on', follow.length > 0);
+  async function loadPrefs() {
+    try { follow = forceDemo ? [{ id: '432', name: 'Galatasaray' }] : ((await getJSON('/api/prefs')).follow || []); } catch {}
+    updateStar();
+  }
+  async function savePrefs() {
+    if (!forceDemo) {
+      try {
+        const r = await fetch('/api/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ follow }) });
+        if (r.ok) follow = (await r.json()).follow || follow;
+      } catch {}
+    }
+    spR.draw(false); drawRailScores(); loadMyTeams();
+  }
+  async function loadMyTeams() {
+    if (forceDemo) { myteams = demoMyTeams(); spR.draw(false); renderNext(); return; }
+    try { myteams = await getJSON('/api/myteams'); spR.draw(false); renderNext(); } catch {}
+  }
+  async function loadReminders() {
+    try { rem = forceDemo ? demoReminders() : await getJSON('/api/reminders'); finR.draw(false); checkReminders(); } catch {}
+  }
+
+  async function loadMarkets() {
+    try { markets = forceDemo ? demoMarkets() : await getJSON('/api/markets'); finR.draw(false); drawRailMarkets(); } catch {}
+  }
+  async function loadFootball() {
+    try { footy = forceDemo ? demoFootball() : await getJSON('/api/football'); spR.draw(false); drawRailScores(); checkGoals(); checkKickoffs(); } catch {}
+  }
+  async function loadNews() {
+    try { news = forceDemo ? demoNews() : await getJSON('/api/news'); finR.draw(false); } catch {}
+  }
+  async function loadTennis() {
+    try { tennis = forceDemo ? demoTennis() : await getJSON('/api/tennis'); spR.draw(false); } catch {}
+  }
+
+  // ---------- Sample data (used with ?demo) ----------
+  function demoMarkets() {
+    const day = i => fmtDayKey.format(new Date(Date.now() - (30 - i) * 864e5));
+    const walk = (start, drift, wob) => [...Array(30)].map((_, i) => [day(i), start * (1 + drift * i / 30 + Math.sin(i / 3) * wob)]);
+    return { items: [
+      { code: 'USD', name: 'US Dollar', buy: 50.1421, sell: 50.1575, change: 0.2 },
+      { code: 'EUR', name: 'Euro', buy: 55.9072, sell: 55.9367, change: -0.62 },
+      { code: 'GRA', name: 'Gram gold', buy: 6555.36, sell: 6556.39, change: -0.6 },
+    ], crypto: [
+      { code: 'BTC', name: 'Bitcoin', sell: 3803232, usd: 75850, change: -0.03 },
+      { code: 'ETH', name: 'Ethereum', sell: 112028, usd: 2234.24, change: -0.41 },
+    ], stocks: [], history: { USD: walk(49.1, 0.02, 0.002), EUR: walk(55.1, 0.015, 0.004), GRA: walk(6630, -0.012, 0.01),
+      BTC: walk(4060000, -0.06, 0.02), ETH: walk(122000, -0.08, 0.03) } };
+  }
+  function demoMyTeams() {
+    return { teams: [{ id: '432', name: 'Galatasaray', logo: null, standings: [{ league: 'Süper Lig', rank: 1, pts: 28 }],
+      next: { id: 'x1', date: new Date(Date.now() + 3 * 864e5).toISOString(), league: 'Süper Lig', home: { id: '432', team: 'Galatasaray' }, away: { id: '9', team: 'Samsunspor' } } }] };
+  }
+  function demoReminders() {
+    const at = h => new Date(Date.now() + h * 3600e3).toISOString();
+    return { enabled: true, items: [
+      { id: 'r1', name: 'Pay the electricity bill', list: 'Bills', due: at(-2), all_day: false, flagged: true },
+      { id: 'r2', name: 'Call the bank', list: 'To Do', due: at(3), all_day: false },
+      { id: 'r3', name: 'Send BES payment', list: 'Bills', due: at(50), all_day: false } ] };
+  }
+  function demoFootball() {
+    const ids = { Galatasaray: '432', Fenerbahce: '436' };
+    const t = names => names.map((n, i) => ({ rank: i + 1, id: ids[n] || String(9000 + i), team: n, played: 11, w: 9 - (i >> 1), d: 1, l: 1 + (i >> 1), gd: 14 - i * 2, pts: 28 - i * 2 }));
+    const at = h => new Date(Date.now() + h * 3600e3).toISOString();
+    const dom = { top: 4, mid: 0, bottom: 3 };
+    return { leagues: [
+      { id: 'eng.1', name: 'Premier League', zones: dom, table: t(['Arsenal', 'Man City', 'Liverpool', 'Chelsea', 'Aston Villa', 'Newcastle', 'Tottenham', 'Brighton', 'Fulham', 'Brentford', 'Everton', 'Bournemouth', 'Wolves', 'Leeds', 'Burnley', 'Sunderland']),
+        matches: [{ date: at(1), state: 'pre', home: { team: 'C Palace', score: '0' }, away: { team: 'Liverpool', score: '0' } }] },
+      { id: 'tur.1', name: 'Süper Lig', zones: dom, table: t(['Galatasaray', 'Amed SFK', 'Fenerbahce', 'Besiktas', 'Trabzonspor', 'Göztepe', 'Samsunspor', 'Basaksehir', 'Kasimpasa', 'Rizespor', 'Alanyaspor', 'Kocaelispor', 'Antalyaspor', 'Eyupspor']),
+        matches: [
+          { date: at(-1), state: 'in', detail: "35'", home: { team: 'Çorum FK', score: '0' }, away: { team: 'Fenerbahce', score: '2' } },
+          { date: at(-4), state: 'post', home: { team: 'Rizespor', score: '2' }, away: { team: 'Erzurum', score: '1' } },
+          { date: at(3), state: 'pre', home: { team: 'Besiktas', score: '0' }, away: { team: 'Genclerbirligi', score: '0' } }] },
+      { id: 'uefa.champions', name: 'Champions League', zones: { top: 8, mid: 24, bottom: 0 }, table: t(['PSG', 'Bayern', 'Inter', 'Arsenal', 'Real Madrid', 'Galatasaray', 'Barcelona', 'Liverpool', 'Dortmund', 'Atlético', 'Napoli', 'Benfica']), matches: [] },
+    ] };
+  }
+  function demoNews() {
+    const t = m => Date.now() / 1000 - m * 60;
+    return { groups: [
+      { name: 'World', items: [
+        { source: 'BBC', time: t(25), title: 'Leaders gather for climate talks as deadline for new targets nears', summary: 'Negotiators say a deal on finance is still possible before the end of the week.' },
+        { source: 'DW', time: t(70), title: 'European rail strike disrupts weekend travel across three countries', summary: 'Unions are demanding pay rises in line with inflation.' },
+        { source: 'BBC', time: t(130), title: 'Scientists map the deepest known cave system in Europe', summary: 'The survey took four years and more than 300 dives.' }] },
+      { name: 'Türkiye', items: [
+        { source: 'NTV', time: t(15), title: 'İstanbul’da yeni metro hattı hafta sonu hizmete açılıyor', summary: 'Hat, günde 600 bin yolcu taşıyacak.' },
+        { source: 'BBC', time: t(60), title: 'Merkez Bankası faiz kararını perşembe günü açıklayacak', summary: 'Ekonomistler politika faizinde değişiklik beklemiyor.' }] },
+    ] };
+  }
+  function demoTennis() {
+    const at = h => new Date(Date.now() + h * 3600e3).toISOString();
+    const P = (name, rank, sets, winner) => ({ name, rank, sets, winner });
+    return { tours: [
+      { id: 'atp', name: 'ATP', tournaments: [{ name: 'Rolex Paris Masters', matches: [
+        { date: at(0.5), state: 'pre', round: 'F', players: [P('C. Alcaraz', 2, []), P('B. Shelton', 3, [])] },
+        { date: at(-24), state: 'post', round: 'SF', players: [P('B. Shelton', 3, [5, 6, 6], true), P('L. Van Assche', null, [7, 3, 4])] },
+        { date: at(-22), state: 'post', round: 'SF', players: [P('C. Alcaraz', 2, [6, 6], true), P('C. Ruud', null, [4, 4])] }] }],
+        rankings: ['Alexander Zverev', 'Jannik Sinner', 'Carlos Alcaraz', 'Ben Shelton', 'Daniil Medvedev', 'Taylor Fritz', 'Alex de Minaur', 'Casper Ruud', 'Holger Rune', 'Lorenzo Musetti', 'Jack Draper', 'Tommy Paul']
+          .map((name, i) => ({ rank: i + 1, previous: i === 0 ? 2 : i === 1 ? 1 : i + 1, name, points: 9550 - i * 600 })) },
+    ] };
+  }
+  function demoStatus() {
+    const n = Date.now() / 1000;
+    return { sessions: [
+      { id: 'a', project: 'sidescreen', state: 'waiting', detail: 'Permission: Bash  launchctl load ~/Library/LaunchAgents/…', updated: n - 42 },
+      { id: 'b', project: 'api-gateway', state: 'working', tool: 'Bash', detail: 'npm test -- --watch=false', prompt: 'fix the flaky auth test', tools: 14, turn_started: n - 187, updated: n - 2 },
+      { id: 'c', project: 'blog', state: 'done', message: 'Published draft and updated the RSS feed.', updated: n - 540 },
+      { id: 'd', project: 'dotfiles', state: 'idle', prompt: 'add zsh aliases', updated: n - 3600 },
+    ] };
+  }
+  function demoCalendar() {
+    const base = new Date(); base.setMinutes(0, 0, 0);
+    const at = (dh, dur = 1) => ({ start: new Date(base.getTime() + dh * 3600e3).toISOString(), end: new Date(base.getTime() + (dh + dur) * 3600e3).toISOString() });
+    return { enabled: true, events: [
+      { title: 'Design review', location: 'Zoom', ...at(-2) },
+      { title: 'Lunch with Deniz', location: 'Karaköy', ...at(1, 1.5) },
+      { title: 'Galatasaray – Fenerbahçe', ...at(4, 2) },
+      { title: 'Standup', ...at(18, 0.25) },
+      { title: 'Dentist', location: 'Nişantaşı', ...at(21) },
+    ] };
+  }
+
+  // ---------- Data loading ----------
+  // Sample data only with ?demo. Otherwise keep retrying the server, which may
+  // start a few seconds after Chrome at login (or restart after a crash).
+  let online = null, configLoaded = false, pageVersion = null;
+  async function getJSON(path) {
+    const r = await fetch(path, { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  }
+  async function loadConfig() {
+    try { cfg = { ...cfg, ...(await getJSON('/api/config')) }; makeFormatters(); configLoaded = true; tick(); return true; }
+    catch { return false; }
+  }
+  async function pollStatus() {
+    if (forceDemo) { document.body.classList.add('demo'); renderSessions(demoStatus().sessions); return; }
+    try {
+      const st = await getJSON('/api/status');
+      // Reload when the server restarts or the page is updated.
+      if (st.version) { if (pageVersion && st.version !== pageVersion) return location.reload(); pageVersion = st.version; }
+      if (online !== true) {
+        online = true;
+        document.body.classList.remove('offline');
+        if (!configLoaded && await loadConfig()) { loadWeather(); startRotation(); }
+        await loadPrefs();
+        loadCalendar(); loadMarkets(); loadNews(); loadFootball(); loadTennis(); loadMyTeams(); loadReminders();
+      }
+      renderSessions(st.sessions || []);
+    } catch {
+      if (online !== false) {
+        online = false;
+        document.body.classList.add('offline');
+        renderSessions([], 'Server offline, retrying…');
+      }
+    }
+  }
+  async function loadCalendar() {
+    try { cal = forceDemo ? demoCalendar() : await getJSON('/api/calendar'); finR.draw(false); renderNext(); } catch {}
+  }
+
+  // ---------- Spotify ----------
+  let sp = null, spPlayedAt = 0, spSig = '';
+  async function loadSpotify() {
+    try { sp = forceDemo ? (sp || demoSpotify()) : await getJSON('/api/spotify'); drawSpotify(); } catch {}
+  }
+  function demoSpotify() {
+    return { running: true, state: 'playing', id: 'demo', name: 'Midnight City', artist: 'M83', album: "Hurry Up, We're Dreaming",
+      artwork: '', duration: 243, position: 61, at: Date.now() / 1000 };
+  }
+  function drawSpotify() {
+    const el = $('#np'), now = Date.now();
+    const on = sp && sp.running && (sp.state === 'playing' || sp.state === 'paused') && sp.name;
+    if (on && sp.state === 'playing') spPlayedAt = now;
+    // Paused: stay for 2 minutes, then fold away until something plays again.
+    const show = on && (sp.state === 'playing' || now - spPlayedAt < 120e3);
+    el.classList.toggle('on', !!show);
+    if (!show) return;
+    el.classList.toggle('playing', sp.state === 'playing');
+    el.classList.toggle('paused', sp.state === 'paused');
+    const sig = [sp.id, sp.name, sp.artist, sp.artwork].join('|');
+    if (sig !== spSig) {
+      spSig = sig;
+      el.querySelector('.art').style.backgroundImage = sp.artwork && /^https:\/\//.test(sp.artwork) ? `url("${sp.artwork.replace(/"/g, '')}")` : '';
+      el.querySelector('.tx b').textContent = sp.name;
+      el.querySelector('.tx span').textContent = [sp.artist, sp.album].filter(Boolean).join(' · ');
+    }
+    el.querySelector('.pp use').setAttribute('href', sp.state === 'playing' ? '#i-pause' : '#i-resume');
+    spProgress();
+  }
+  // Moves the progress line between polls.
+  function spProgress() {
+    if (!sp || !sp.duration || !$('#np').classList.contains('on')) return;
+    const pos = sp.position + (sp.state === 'playing' ? Date.now() / 1000 - (sp.at || Date.now() / 1000) : 0);
+    $('#np .bar i').style.width = Math.min(100, pos / sp.duration * 100) + '%';
+  }
+  async function spCommand(cmd) {
+    if (forceDemo) { if (cmd === 'playpause') { sp.state = sp.state === 'playing' ? 'paused' : 'playing'; drawSpotify(); } return; }
+    if (cmd === 'playpause' && sp) { sp = { ...sp, state: sp.state === 'playing' ? 'paused' : 'playing', at: Date.now() / 1000 }; drawSpotify(); }
+    try {
+      const r = await fetch('/api/spotify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cmd }) });
+      if (r.ok) { sp = await r.json(); drawSpotify(); }
+    } catch {}
+  }
+
+  // ---------- YouTube / match mode ----------
+  function parseYouTube(input) {
+    const s = (input || '').trim();
+    if (/^[\w-]{11}$/.test(s)) return s;
+    try {
+      const u = new URL(s.includes('://') ? s : 'https://' + s);
+      if (!/(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be)$/.test(u.hostname)) return null;
+      if (u.hostname.endsWith('youtu.be')) return u.pathname.slice(1, 12) || null;
+      const v = u.searchParams.get('v'); if (v && /^[\w-]{11}$/.test(v)) return v;
+      const m = u.pathname.match(/^\/(?:live|shorts|embed|v)\/([\w-]{11})/);
+      return m ? m[1] : null;
+    } catch { return null; }
+  }
+  let videoId = null;
+  function enterMatch(id) {
+    videoId = id;
+    $('#player').innerHTML = `<iframe src="https://www.youtube.com/embed/${id}?autoplay=1&rel=0&playsinline=1"
+      allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen
+      referrerpolicy="strict-origin-when-cross-origin" title="YouTube video"></iframe>`;
+    document.body.classList.add('match');
+    store.set('video', id);
+    drawRailScores(); renderNext();
+  }
+  function exitMatch() {
+    $('#player').innerHTML = '';
+    document.body.classList.remove('match', 'norail');
+    videoId = null; store.set('video', null);
+  }
+  const ytBox = $('#yt');
+  const ytOpen = () => { ytBox.classList.add('open'); setTimeout(() => $('#url').focus(), 60); };
+  const ytClose = () => { ytBox.classList.remove('open', 'bad'); $('#url').value = ''; $('#url').blur(); };
+  ytBox.addEventListener('submit', e => {
+    e.preventDefault();
+    const id = parseYouTube($('#url').value);
+    if (!id) { ytBox.classList.add('bad'); setTimeout(() => ytBox.classList.remove('bad'), 1200); return; }
+    ytClose(); enterMatch(id);
+  });
+  $('#url').addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); ytClose(); } });
+  $('#url').addEventListener('blur', () => { if (!$('#url').value) setTimeout(() => { if (document.activeElement !== $('#url')) ytBox.classList.remove('open'); }, 150); });
+  // Pasting a YouTube link anywhere on the dashboard starts it straight away.
+  document.addEventListener('paste', e => {
+    if (e.target.closest && e.target.closest('input')) return;
+    const id = parseYouTube((e.clipboardData || window.clipboardData).getData('text'));
+    if (id) { e.preventDefault(); enterMatch(id); }
+  });
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]'); if (!b) return;
+    const a = b.dataset.act;
+    if (a === 'exit') exitMatch();
+    if (a === 'rail') { document.body.classList.toggle('norail'); fitRail(); }
+    if (a === 'yt' && videoId) window.open('https://www.youtube.com/watch?v=' + videoId, '_blank');
+    if (a.startsWith('sp-')) spCommand(a.slice(3));
+    if (a === 'yt-open') ytOpen();
+    if (a === 'yt-close') ytClose();
+    if (a === 'picker') openPicker();
+    if (a === 'pk-done') closePicker();
+  });
+  addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (!$('#picker').hidden) return closePicker();
+    if (document.body.classList.contains('match')) exitMatch();
+  });
+
+  // ---------- Boot ----------
+  (async () => {
+    if (!forceDemo) await loadConfig();
+    tick(); setInterval(tick, 1000);
+    loadWeather(); setInterval(loadWeather, 15 * 60e3);
+    await pollStatus(); setInterval(pollStatus, 1500);
+    loadCalendar(); setInterval(loadCalendar, 5 * 60e3);
+    if (forceDemo) { await loadPrefs(); loadMarkets(); loadNews(); loadFootball(); loadTennis(); loadMyTeams(); loadReminders(); }
+    setInterval(loadNews, 5 * 60e3);
+    setInterval(loadMarkets, 60e3); setInterval(loadFootball, 30e3); setInterval(loadTennis, 60e3);
+    setInterval(loadMyTeams, 10 * 60e3); setInterval(loadReminders, 60e3);
+    setInterval(() => { checkKickoffs(); checkReminders(); }, 30e3);
+    setInterval(renderNext, 60e3);
+    loadSpotify(); setInterval(loadSpotify, 2000); setInterval(spProgress, 1000);
+    startRotation();
+    const saved = store.get('video');
+    if (saved) enterMatch(saved);
+  })();
+})();
+</script>
+</body>
+</html>

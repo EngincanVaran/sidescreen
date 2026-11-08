@@ -1,0 +1,43 @@
+{
+  "port": 8765,
+  "display": "",
+  "location": { "name": "Istanbul", "lat": 41.01, "lon": 28.98 },
+  "timezone": "Europe/Istanbul",
+  "locale": "en-GB",
+  "hour12": false,
+  "calendars": [],
+  "calendar_days_ahead": 2,
+  "night_dim": { "start": "00:30", "end": "07:30", "opacity": 0.45 },
+  "rotate_seconds": 12,
+  "kickoff_reminder_minutes": 15,
+  "goal_alerts": "followed",
+
+  "markets": ["USD", "EUR", "GBP", "GRA"],
+  "crypto": ["bitcoin", "ethereum"],
+  "stocks": { "api_key": "", "symbols": ["AAPL", "NVDA", "MSFT"] },
+
+  "reminders": { "enabled": true, "lists": [], "days_ahead": 30 },
+
+  "news": [
+    {
+      "name": "World",
+      "feeds": [
+        "https://feeds.bbci.co.uk/news/world/rss.xml",
+        "https://rss.dw.com/rdf/rss-en-world"
+      ]
+    },
+    {
+      "name": "Türkiye",
+      "feeds": [
+        "https://feeds.bbci.co.uk/turkce/rss.xml",
+        "https://www.ntv.com.tr/gundem.rss",
+        "https://www.sozcu.com.tr/feeds-rss-category-gundem",
+        "https://rss.dw.com/rdf/rss-tur-all"
+      ],
+      "exclude": ["deprem mi oldu"]
+    }
+  ],
+
+  "football": ["tur.1", "eng.1", "esp.1", "ger.1", "ita.1", "fra.1", "uefa.champions", "uefa.europa", "uefa.europa.conf"],
+  "tennis": ["atp", "wta"]
+}
