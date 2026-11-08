@@ -3,9 +3,9 @@
 An always-on information dashboard for the Mac mini's portable display (1920×1080).
 
 **Ambient mode**
-- Clock, date, weather with a 7-day forecast, a **Spotify** pill (cover, track, artist, progress, previous / play-pause / next) that appears while the Spotify app plays and folds away 2 minutes after you pause, and a small **YouTube** button that expands into a link box (or just paste a YouTube link anywhere on the dashboard).
-- **Info card** (rotates): TL rates and gram gold with 30-day trend lines, crypto (and stocks, with a key), Apple Reminders, World news, Türkiye news, and your agenda (when a calendar is connected).
-- **Sports card** (rotates, with Football / Tennis tabs): your teams, today's football with live scores, league tables (Süper Lig, Premier League, La Liga, Bundesliga, Serie A, Ligue 1, Champions League, Europa League, Conference League), ATP/WTA matches and rankings. Competition logos, and a red LIVE badge when something is being played.
+- Clock, date, and a **weather card** with a 7-day forecast that takes turns with your Apple Reminders and agenda, a **Spotify** pill (cover, track, artist, progress, previous / play-pause / next) that appears while the Spotify app plays and folds away 2 minutes after you pause, and a small **YouTube** button that expands into a link box (or just paste a YouTube link anywhere on the dashboard).
+- **Info card** (rotates): TL rates and gram gold with 30-day trend lines, crypto (and stocks, with a key), World news and Türkiye news.
+- **Sports card** (rotates, with Football / Basketball / Tennis tabs): your teams, today's football with live scores, league tables (Süper Lig, Premier League, La Liga, Bundesliga, Serie A, Ligue 1, Champions League, Europa League, Conference League), EuroLeague and EuroCup games and standings (clubs you follow in football are highlighted in basketball too), ATP/WTA matches and rankings. Competition logos, and a red LIVE badge when something is being played.
 - **Follow teams** with the star button on the sports card. Followed teams are highlighted in tables and matches, shown first, and get a "Your teams" panel with their position and next fixture.
 - **Alerts** at the top of the screen (also over a video): goals with the scorer, kick-off reminders before your teams play, kick-off and full time, reminders when they're due, and Claude sessions that need you. Click one to dismiss it.
 - Claude Code sessions: needs you, working, done. "Needs you" covers permission prompts, Claude's question dialogs and plan approvals, and replies that end by asking you something. The card grows and shrinks with the number of sessions, and the sports card uses the space it frees. Session states are kept in `sessions.json`, so they survive a server restart.
@@ -52,7 +52,9 @@ curl -X POST http://127.0.0.1:8765/api/hook -d '{"hook_event_name":"PermissionRe
 
 ## Calendar
 
-The agenda reads calendars from iCal links (a calendar's address in the standard `.ics` format).
+The agenda reads the Mac's own calendars directly: everything Calendar.app shows (iCloud, Google, Exchange accounts added in System Settings), with repeating events. The first time, macOS asks whether the server may access your calendars; click Allow. If you said no, allow it in System Settings → Privacy & Security → Calendars. Limit it to some calendars with `apple_calendar.calendars`, or turn it off with `"apple_calendar": {"enabled": false}`.
+
+You can also add iCal links (a calendar's address in the standard `.ics` format), for calendars that aren't on this Mac:
 
 - **Apple Calendar (iCloud)**: in Calendar, right-click the calendar → Share Calendar → tick **Public Calendar** and copy the `webcal://` link. Anyone who has that link can read the calendar, so keep it private.
 - **Google Calendar**: Settings → your calendar → "Secret address in iCal format".
@@ -78,7 +80,8 @@ Stocks need a free key from [Twelve Data](https://twelvedata.com) (about 800 req
 | `port` | Server port (default 8765). Re-run `install.sh` after changing it. |
 | `display` | Part of the screen name to open on, e.g. `"ASUS"`. Empty = the smallest non-main screen. Re-run `install.sh` after changing it. |
 | `location`, `timezone`, `locale`, `hour12` | Weather location and clock format. |
-| `calendars`, `calendar_days_ahead` | iCal links (see above) and how many days to load. |
+| `apple_calendar` | `enabled` (default `true`) and `calendars` (names; empty = all). |
+| `calendars`, `calendar_days_ahead` | Extra iCal links (see above) and how many days to load. |
 | `night_dim` | When to dim the screen, and how bright it stays (`opacity`). |
 | `rotate_seconds` | How long each panel stays up. The two cards take turns. |
 | `markets` | Truncgil codes: `USD`, `EUR`, `GBP`, `GRA` (gram gold), `CEYREKALTIN` (quarter gold), … |
@@ -91,6 +94,7 @@ Stocks need a free key from [Twelve Data](https://twelvedata.com) (about 800 req
 | `news` | Groups of RSS feeds, each with a `name` and `feeds`. Optional `exclude` hides headlines containing any of those words. |
 | `football` | ESPN codes: `tur.1`, `eng.1`, `esp.1`, `ger.1`, `ita.1`, `fra.1`, `uefa.champions`, `uefa.europa`, `uefa.europa.conf`. |
 | `tennis` | `atp`, `wta`. |
+| `basketball` | `E` (EuroLeague), `U` (EuroCup). |
 
 Restart the server after editing config: `launchctl kickstart -k gui/$(id -u)/com.sidescreen.server`.
 
@@ -101,7 +105,7 @@ Other Turkish feeds that work: `https://www.hurriyet.com.tr/rss/gundem`, `https:
 - `server.py`: Python 3.9+ standard library only, listening on `127.0.0.1` only.
   - `POST /api/hook`: Claude Code hook events. Always answers `204` so it never blocks a session.
   - `GET /api/status`: sessions, sorted waiting → error → working → done → idle. Sessions idle for 8 h are dropped.
-  - `GET /api/markets`, `/api/news`, `/api/football`, `/api/tennis`, `/api/calendar`: cached on the server (rates 1 min, crypto 2 min, 30-day trends 3–6 h, news 10 min, scores 30 s while live / 5 min otherwise, tables 10 min, fixtures 1 h, rankings 6 h, calendar 5 min). If a source is down, the last good data is kept.
+  - `GET /api/markets`, `/api/news`, `/api/football`, `/api/basketball`, `/api/tennis`, `/api/calendar`: cached on the server (rates 1 min, crypto 2 min, 30-day trends 3–6 h, news 10 min, scores 30 s while live / 5 min otherwise (basketball 45 s / 5 min), Apple Calendar 5 min, tables 10 min, fixtures 1 h, rankings 6 h, calendar 5 min). If a source is down, the last good data is kept.
   - `GET /api/spotify`, `POST /api/spotify` (`{"cmd": "playpause" | "next" | "previous"}`, same rules as prefs): what Spotify is playing, and its controls.
   - `GET /api/myteams`, `/api/reminders`: followed teams' positions and next fixtures; Apple Reminders (read in the background every 3 minutes).
   - `GET`/`POST /api/prefs`: followed teams, saved to `prefs.json`. Writes are only accepted as JSON from the dashboard's own address.
@@ -109,6 +113,6 @@ Other Turkish feeds that work: `https://www.hurriyet.com.tr/rss/gundem`, `https:
 - `static/index.html`: the whole dashboard. Weather comes straight from Open-Meteo.
 - `scripts/hooks.py`: adds/removes the hooks in `settings.json`.
 - `scripts/open-display.sh` + `scripts/screen-frame.js`: find the portable screen and open Chrome on it.
-- `scripts/reminders.js`, `scripts/spotify.js`: read the Reminders and Spotify apps (JavaScript for Automation, run with `osascript`).
+- `scripts/reminders.js`, `scripts/calendar.js`, `scripts/spotify.js`: read Reminders, Calendar (EventKit) and Spotify (JavaScript for Automation, run with `osascript`).
 
-Data sources (no API keys): [Open-Meteo](https://open-meteo.com) for weather, [Truncgil Finans](https://finans.truncgil.com) for TL rates and gold, [Frankfurter](https://frankfurter.dev) (ECB) for 30-day currency trends, [CoinGecko](https://www.coingecko.com) for crypto and the gold trend (PAX Gold, one token per troy ounce, as a stand-in), ESPN's public site API for football, tennis and logos, and publishers' RSS feeds for news. Stocks use Twelve Data with your key. Truncgil and ESPN are unofficial and could change without notice.
+Data sources (no API keys): [Open-Meteo](https://open-meteo.com) for weather, [Truncgil Finans](https://finans.truncgil.com) for TL rates and gold, [Frankfurter](https://frankfurter.dev) (ECB) for 30-day currency trends, [CoinGecko](https://www.coingecko.com) for crypto and the gold trend (PAX Gold, one token per troy ounce, as a stand-in), ESPN's public site API for football, tennis and logos, the official EuroLeague API for basketball, and publishers' RSS feeds for news. Stocks use Twelve Data with your key. Truncgil and ESPN are unofficial and could change without notice.

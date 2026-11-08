@@ -39,5 +39,9 @@
   ],
 
   "football": ["tur.1", "eng.1", "esp.1", "ger.1", "ita.1", "fra.1", "uefa.champions", "uefa.europa", "uefa.europa.conf"],
-  "tennis": ["atp", "wta"]
+  "tennis": ["atp", "wta"],
+  "basketball": ["E", "U"],
+
+  "apple_calendar": { "enabled": true, "calendars": [] },
+  "spotify": { "enabled": true }
 }

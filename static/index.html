@@ -90,6 +90,10 @@
   .np.paused .tx b { color: var(--text-2); }
   .duo { margin-top: auto; display: grid; grid-template-columns: 400px 1fr; gap: 28px; height: 552px; }
   .weather { padding: 28px 32px 26px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .wx-main { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; transition: opacity .45s ease; }
+  .wxcard.show-wx > .tk-head, .wxcard.show-wx > .tk-body { display: none; }
+  .wxcard:not(.show-wx) > .wx-main { display: none; }
+  .ticker.fade .wx-main { opacity: 0; }
   .wx-now { display: flex; align-items: center; gap: 24px; }
   .wx-now svg { font-size: 64px; color: var(--text-2); stroke-width: 1.2; }
   .wx-temp { font-size: 80px; font-weight: 300; letter-spacing: -0.04em; line-height: 1; }
@@ -426,7 +430,8 @@
       </div>
 
       <div class="duo">
-        <div class="card weather">
+        <div class="card weather ticker wxcard show-wx">
+          <div class="wx-main">
           <div class="wx-now">
             <svg class="i" data-wx-icon><use href="#i-cloud"/></svg>
             <div class="wx-temp" data-wx-temp>--°</div>
@@ -437,6 +442,9 @@
           </div>
           <div class="daily" id="daily"></div>
           <div class="hourly" id="hourly"></div>
+          </div>
+          <div class="tk-head"><div class="label" id="wx-label"></div><div class="tk-dots" id="wx-dots"></div></div>
+          <div class="tk-body" id="wx-body"></div>
         </div>
         <div class="card ticker">
           <div class="tk-head"><div class="label" id="fin-label">Markets</div><div class="tk-dots" id="fin-dots"></div></div>
@@ -868,9 +876,7 @@
     if (markets && markets.items && markets.items.length) p.push({ key: 'mk', label: 'Markets', icon: 'trend', html: marketsHTML });
     if (markets && ((markets.crypto || []).length || (markets.stocks || []).length))
       p.push({ key: 'cs', label: (markets.stocks || []).length ? 'Crypto & stocks' : 'Crypto', icon: 'coin', html: cryptoStocksHTML });
-    if (rem && rem.enabled && rem.items && rem.items.length) p.push({ key: 'rm', label: 'Reminders', icon: 'check', html: remindersHTML });
     if (news) news.groups.forEach((g, i) => { if (g.items.length) p.push(newsPanel(g, i)); });
-    if (cal && cal.enabled) p.push({ key: 'ag', label: 'Agenda', icon: 'cal', html: agendaHTML });
     return p;
   }
 
@@ -956,6 +962,47 @@
     return `<table class="tbl"><colgroup><col class="r"><col><col class="n"><col class="n"><col class="n"><col class="n"><col class="g"><col class="pts"></colgroup>
       <tr><th></th><th class="t">Team</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GD</th><th>Pts</th></tr>${body}</table>`;
   }
+  // ---------- Basketball (EuroLeague / EuroCup) ----------
+  let hoops = null;
+  // Turkish clubs you follow in football (Fenerbahçe, Galatasaray, Beşiktaş…) are highlighted here too.
+  const fold = x => (x || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ı/g, 'i');
+  const bbMine = t => follow.some(f => { const n = fold(f.name).split(' ')[0]; return n.length > 3 && fold(t.team).includes(n); });
+  function bbGames(l) {
+    // This round, plus last round's results while they're fresh (under 36 h).
+    const now = Date.now();
+    const prev = (l.previous || []).filter(m => now - new Date(m.date) < 36 * 3600e3);
+    return [...prev, ...l.matches];
+  }
+  function bbRow(m) {
+    const d = new Date(m.date);
+    const st = m.state === 'in' ? 'LIVE' : m.state === 'post' ? 'FT' : fmtTime.format(d);
+    const sc = m.state === 'pre' ? 'vs' : `${esc(m.home.score)} – ${esc(m.away.score)}`;
+    const nm = t => bbMine(t) ? `<b>${esc(t.team)}</b>` : esc(t.team);
+    const mine = bbMine(m.home) || bbMine(m.away);
+    return `<div class="mt fr ${m.state === 'in' ? 'live' : esc(m.state)}${mine ? ' me' : ''}"><span class="st">${st}</span>
+      <span class="h">${nm(m.home)}</span><span class="sc">${sc}</span><span class="a">${nm(m.away)}</span></div>`;
+  }
+  function bbGamesHTML(l) {
+    // Grouped by day ("Today", "Wed 11 Nov"); last round's results at the end.
+    const day = m => isToday(m.date) ? 'Today' : fmtShortDay().format(new Date(m.date));
+    const ms = bbGames(l).map(m => ({ ...m, lg: l.previous.includes(m) ? 'Last round' : `${m.round_name || l.round_name} · ${day(m)}`, logo: '' }));
+    const order = (a, b) => (bbMine(b.home) || bbMine(b.away)) - (bbMine(a.home) || bbMine(a.away)) || stateRank(a.state) - stateRank(b.state) || new Date(a.date) - new Date(b.date);
+    const cur = ms.filter(m => m.lg !== 'Last round').sort((a, b) => new Date(a.date) - new Date(b.date) || order(a, b)), last = ms.filter(m => m.lg === 'Last round').sort(order);
+    return grouped([...cur, ...last], bbRow);
+  }
+  function bbTableHTML(l, g) {
+    const z = l.zones || {};
+    const row = r => `<tr class="${[r.rank <= z.top ? 'zone' : r.rank <= z.mid ? 'mid' : '', bbMine(r) ? 'me' : '', 'fr'].join(' ')}">
+      <td class="r">${r.rank}</td><td class="t">${esc(r.team)}</td><td>${r.p ?? ''}</td><td>${r.w ?? ''}</td><td>${r.l ?? ''}</td>
+      <td>${r.diff > 0 ? '+' : ''}${r.diff}</td></tr>`;
+    return `<table class="tbl"><colgroup><col class="r"><col><col class="n"><col class="n"><col class="n"><col class="g"></colgroup>
+      <tr><th></th><th class="t">Team</th><th>P</th><th>W</th><th>L</th><th>+/−</th></tr>${g.table.map(row).join('')}</table>`;
+  }
+  async function loadBasketball() {
+    if (forceDemo) return;
+    try { hoops = await getJSON('/api/basketball'); spR.draw(false); } catch {}
+  }
+
   function tennisMatches(tour) {
     const now = Date.now();
     let all = tour.tournaments.flatMap(tn => tn.matches.map(m => ({ ...m, lg: tn.name })))
@@ -987,10 +1034,10 @@
       <tr><th></th><th class="t">Player</th><th>Points</th><th>+/–</th></tr>${tour.rankings.slice(0, 20).map(row).join('')}</table>`;
   }
   // Panels are grouped by sport; the header tabs show which sport is on.
-  const SPORTS = [['football', 'Football'], ['tennis', 'Tennis']];
+  const SPORTS = [['football', 'Football'], ['basketball', 'Basketball'], ['tennis', 'Tennis']];
   // One round: your teams, today's football, ONE league table (they take turns),
   // tennis matches, ONE rankings table (ATP/WTA take turns). Keeps a round near a minute.
-  let tableTurn = 0, rankTurn = 0;
+  let tableTurn = 0, rankTurn = 0, bbTurn = 0;
   function sportPanels() {
     const p = [];
     if (footy) {
@@ -1012,6 +1059,21 @@
           live: l.matches.filter(m => m.state === 'in').length, html: () => tableHTML(l) });
       }
     }
+    if (hoops) {
+      hoops.leagues.forEach(l => {
+        const ms = bbGames(l); if (!ms.length) return;
+        p.push({ sport: 'basketball', key: 'bb:' + l.id, label: l.name, badge: l.id === 'E' ? 'EL' : 'EC', weight: 1.25,
+          live: ms.filter(m => m.state === 'in').length, html: () => bbGamesHTML(l) });
+      });
+      // One standings table per round, taking turns (EuroLeague, then each EuroCup group).
+      const tbls = hoops.leagues.flatMap(l => l.groups.filter(g => g.table.length).map(g => ({ l, g })));
+      if (tbls.length) {
+        const { l, g } = tbls[bbTurn % tbls.length];
+        const grp = l.groups.length > 1 ? ' · ' + g.name.replace(/^Group /, 'Group ') : '';
+        p.push({ sport: 'basketball', key: 'bbt:' + l.id + g.name, slot: 'bbtable', label: l.name + grp, icon: 'table', weight: 1.4,
+          html: () => bbTableHTML(l, g) });
+      }
+    }
     if (tennis) {
       tennis.tours.forEach(t => {
         const ms = tennisMatches(t); if (!ms.length) return;
@@ -1030,6 +1092,7 @@
   function sportLeave(p) {
     if (p.slot === 'table') tableTurn++;
     if (p.slot === 'rank') rankTurn++;
+    if (p.slot === 'bbtable') bbTurn++;
   }
 
   // ---------- Rotation ----------
@@ -1104,6 +1167,14 @@
     r.jump = pred => { const i = build().findIndex(pred); if (i >= 0) { r.idx = i; r.key = null; lastSwitch = Date.now(); r.draw(true); r.schedule(); } };
     return r;
   }
+  // Weather card: the forecast takes turns with reminders and the agenda.
+  function wxPanels() {
+    const p = [{ key: 'wx', label: '', icon: 'sun', weight: 2, html: () => '' }];
+    if (rem && rem.enabled && rem.items && rem.items.length) p.push({ key: 'rm', label: 'Reminders', icon: 'check', weight: 1.25, html: remindersHTML });
+    if (cal && cal.enabled && calEvents().length) p.push({ key: 'ag', label: 'Agenda', icon: 'cal', weight: 1.25, html: agendaHTML });
+    return p.map(x => ({ ...x, after: () => $('#wx-body').closest('.wxcard').classList.toggle('show-wx', x.key === 'wx') }));
+  }
+  const wxR = makeRotator('wx', wxPanels);
   const finR = makeRotator('fin', finPanels), spR = makeRotator('sp', sportPanels, { tabs: true, onLeave: sportLeave });
   // The sports card grows or shrinks as Claude sessions come and go: redraw so it fills the new height.
   let lastSpH = 0, refitTimer = null;
@@ -1115,6 +1186,7 @@
   }).observe($('#sp-body'));
   // Clicking a card skips to its next panel; a sport tab jumps to that sport.
   $('#fin-body').closest('.ticker').addEventListener('click', e => { if (!e.target.closest('button')) finR.next(); });
+  $('#wx-body').closest('.ticker').addEventListener('click', () => wxR.next());
   $('#sp-body').closest('.ticker').addEventListener('click', e => {
     const tab = e.target.closest('.sp-tab');
     if (tab) return spR.jump(x => x.sport === tab.dataset.sport);
@@ -1123,6 +1195,7 @@
   function startRotation() {
     finR.schedule();
     spR.schedule(-baseMs() / 2);  // start half a step apart
+    wxR.schedule(baseMs() / 3);
   }
   function drawRailMarkets() {
     const el = $('#rail-mk');
@@ -1251,7 +1324,7 @@
     try { myteams = await getJSON('/api/myteams'); spR.draw(false); renderNext(); } catch {}
   }
   async function loadReminders() {
-    try { rem = forceDemo ? demoReminders() : await getJSON('/api/reminders'); finR.draw(false); checkReminders(); } catch {}
+    try { rem = forceDemo ? demoReminders() : await getJSON('/api/reminders'); wxR.draw(false); checkReminders(); } catch {}
   }
 
   async function loadMarkets() {
@@ -1377,7 +1450,7 @@
         document.body.classList.remove('offline');
         if (!configLoaded && await loadConfig()) { loadWeather(); startRotation(); }
         await loadPrefs();
-        loadCalendar(); loadMarkets(); loadNews(); loadFootball(); loadTennis(); loadMyTeams(); loadReminders();
+        loadCalendar(); loadMarkets(); loadNews(); loadFootball(); loadTennis(); loadBasketball(); loadMyTeams(); loadReminders();
       }
       renderSessions(st.sessions || []);
     } catch {
@@ -1389,7 +1462,7 @@
     }
   }
   async function loadCalendar() {
-    try { cal = forceDemo ? demoCalendar() : await getJSON('/api/calendar'); finR.draw(false); renderNext(); } catch {}
+    try { cal = forceDemo ? demoCalendar() : await getJSON('/api/calendar'); wxR.draw(false); renderNext(); } catch {}
   }
 
   // ---------- Spotify ----------
@@ -1508,7 +1581,7 @@
     loadCalendar(); setInterval(loadCalendar, 5 * 60e3);
     if (forceDemo) { await loadPrefs(); loadMarkets(); loadNews(); loadFootball(); loadTennis(); loadMyTeams(); loadReminders(); }
     setInterval(loadNews, 5 * 60e3);
-    setInterval(loadMarkets, 60e3); setInterval(loadFootball, 30e3); setInterval(loadTennis, 60e3);
+    setInterval(loadMarkets, 60e3); setInterval(loadFootball, 30e3); setInterval(loadTennis, 60e3); setInterval(loadBasketball, 60e3);
     setInterval(loadMyTeams, 10 * 60e3); setInterval(loadReminders, 60e3);
     setInterval(() => { checkKickoffs(); checkReminders(); }, 30e3);
     setInterval(renderNext, 60e3);

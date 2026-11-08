@@ -49,6 +49,7 @@ DEFAULT_CONFIG = {
     "reminders": {"enabled": False, "lists": [], "days_ahead": 7},
     "football": ["eng.1", "tur.1", "esp.1", "uefa.champions", "uefa.europa", "uefa.europa.conf"],
     "tennis": ["atp", "wta"],
+    "basketball": ["E", "U"],
     "news": [
         {"name": "World", "feeds": ["https://feeds.bbci.co.uk/news/world/rss.xml",
                                     "https://rss.dw.com/rdf/rss-en-world"]},
@@ -264,6 +265,20 @@ class Calendar:
         self._at = 0.0
 
     def get(self, cfg):
+        apple = APPLE_CAL.data
+        ical = self._ical(cfg)
+        if not apple.get("enabled"):
+            return ical
+        events = list(apple.get("events") or [])
+        if ical.get("enabled"):
+            events += ical.get("events") or []
+        events.sort(key=lambda e: e["start"])
+        out = {"enabled": True, "events": events, "errors": ical.get("errors", 0)}
+        if apple.get("error"):
+            out["apple_error"] = apple["error"]
+        return out
+
+    def _ical(self, cfg):
         urls = [u for u in cfg.get("calendars") or [] if isinstance(u, str) and u.strip()]
         if not urls:
             return {"enabled": False, "reason": "no calendars configured"}
@@ -303,6 +318,40 @@ class Calendar:
                 log(f"calendar fetch failed ({type(e).__name__}): {e}")
         events.sort(key=lambda e: e["start"])
         return {"enabled": True, "events": events, "errors": errors}
+
+
+class AppleCalendar:
+    """Reads the Mac's own calendars (EventKit) in the background, every 5 minutes."""
+
+    def __init__(self):
+        self.data = {"enabled": False}
+
+    def start(self, cfg):
+        ac = cfg.get("apple_calendar") or {}
+        if not ac.get("enabled", True):
+            return
+        self.data = {"enabled": True, "events": [], "loading": True}
+        threading.Thread(target=self._loop, args=(cfg, ac), daemon=True).start()
+
+    def _loop(self, cfg, ac):
+        script = str(ROOT / "scripts" / "calendar.js")
+        names = json.dumps([x for x in ac.get("calendars") or [] if isinstance(x, str)])
+        days = str(max(1, int(cfg.get("calendar_days_ahead") or 2)))
+        while True:
+            try:
+                r = subprocess.run(["osascript", "-l", "JavaScript", script, days, names],
+                                   capture_output=True, text=True, timeout=90)
+                d = json.loads(r.stdout or "{}")
+                if r.returncode != 0 or d.get("error"):
+                    raise RuntimeError(d.get("error") or (r.stderr or "osascript failed").strip()[:200])
+                self.data = {"enabled": True, "events": d.get("events") or [], "updated": time.time()}
+            except Exception as e:
+                log(f"apple calendar: {e}")
+                self.data = {"enabled": True, "events": (self.data.get("events") or []), "error": str(e)[:200]}
+            time.sleep(300)
+
+
+APPLE_CAL = AppleCalendar()
 
 
 def to_event(ev, tz):
@@ -609,6 +658,95 @@ def one_tour(tour):
 def tennis(tours):
     return {"tours": list(POOL.map(one_tour, tours))}
 
+
+
+# ---------------------------------------------------------------- basketball (EuroLeague / EuroCup)
+
+EL_API = "https://api-live.euroleague.net/v2"
+BB_NAMES = {"E": "EuroLeague", "U": "EuroCup"}
+
+
+def bb_season():
+    now = datetime.utcnow()
+    return now.year if now.month >= 8 else now.year - 1
+
+
+def bb_club(side):
+    c = (side or {}).get("club") or {}
+    return {"id": c.get("code") or "", "team": c.get("abbreviatedName") or c.get("name") or "",
+            "abbr": c.get("tvCode") or c.get("code") or "", "logo": ((c.get("images") or {}).get("crest") or "")}
+
+
+def fetch_bb_games(comp, season):
+    """Games of the current round (the one with the next unplayed game), plus last round's results."""
+    data = get_json(f"{EL_API}/competitions/{comp}/seasons/{comp}{season}/games", timeout=20).get("data") or []
+    now = time.time()
+    games = []
+    for g in data:
+        t = parse_iso(g.get("utcDate") or "")
+        if t is None:
+            continue
+        played = bool(g.get("played"))
+        # The API has no "live" flag: a started game counts as live until it's marked played (max 3 h).
+        state = "post" if played else ("in" if t <= now < t + 3 * 3600 else "pre")
+        home, away = bb_club(g.get("local")), bb_club(g.get("road"))
+        if state != "pre":
+            home["score"] = str((g.get("local") or {}).get("score") or 0)
+            away["score"] = str((g.get("road") or {}).get("score") or 0)
+        rnd = g.get("round")
+        games.append({"id": g.get("identifier"), "date": g.get("utcDate"), "state": state, "round": rnd,
+                      "round_name": g.get("roundName") or f"Round {rnd}", "detail": "Live" if state == "in" else "",
+                      "group": ((g.get("group") or {}).get("name") or ""), "home": home, "away": away, "t": t})
+    games.sort(key=lambda g: g["t"])
+    nxt = next((g for g in games if g["state"] != "post"), None)
+    last_played = max((g["round"] for g in games if g["state"] == "post"), default=None)
+    cur = nxt["round"] if nxt else last_played
+    rnd = [g for g in games if g["round"] == cur]
+    prev = [g for g in games if g["round"] == last_played and last_played != cur]
+    for g in games:
+        g.pop("t", None)
+    return {"matches": rnd, "previous": prev, "last_played": last_played,
+            "round_name": rnd[0]["round_name"] if rnd else ""}
+
+
+def fetch_bb_standings(comp, season, rnd):
+    d = get_json(f"{EL_API}/competitions/{comp}/seasons/{comp}{season}/rounds/{rnd}/standings", timeout=20)
+    groups = []
+    for grp in d if isinstance(d, list) else []:
+        rows = []
+        for r in grp.get("standings") or []:
+            c, x = r.get("club") or {}, r.get("data") or {}
+            rows.append({"rank": x.get("position"), "id": c.get("code") or "",
+                         "team": c.get("abbreviatedName") or c.get("name") or "",
+                         "logo": (c.get("images") or {}).get("crest") or "",
+                         "p": x.get("gamesPlayed"), "w": x.get("gamesWon"), "l": x.get("gamesLost"),
+                         "diff": (x.get("pointsFavour") or 0) - (x.get("pointsAgainst") or 0)})
+        rows.sort(key=lambda r: r["rank"] or 99)
+        groups.append({"name": (grp.get("group") or {}).get("name") or "", "table": rows})
+    return sorted(groups, key=lambda g: g["name"])
+
+
+def one_bb(comp):
+    season = bb_season()
+    item = {"id": comp, "name": BB_NAMES.get(comp, comp), "matches": [], "previous": [], "groups": []}
+    try:
+        live = any(m["state"] == "in" for m in ((CACHE._data.get(f"bb:{comp}") or (0, {}))[1] or {}).get("matches", []))
+        item.update(CACHE.get(f"bb:{comp}", 45 if live else 300, lambda: fetch_bb_games(comp, season)))
+    except Exception as e:
+        log(f"basketball {comp}: {e}")
+    if item.get("last_played"):
+        try:
+            rnd = item["last_played"]
+            item["groups"] = CACHE.get(f"bbst:{comp}:{rnd}", 600, lambda: fetch_bb_standings(comp, season, rnd))
+        except Exception as e:
+            log(f"basketball standings {comp}: {e}")
+    # Playoff zones: EuroLeague top 6 straight in, 7-10 play-in.
+    item["zones"] = {"top": 6, "mid": 10} if comp == "E" else {"top": 0, "mid": 0}
+    return item
+
+
+def basketball(comps):
+    return {"leagues": list(POOL.map(one_bb, [c for c in comps if c in BB_NAMES]))}
 
 
 # ---------------------------------------------------------------- news (RSS / Atom)
@@ -1084,6 +1222,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(football(cfg.get("football") or []))
         if path == "/api/news":
             return self._json(news(cfg.get("news")))
+        if path == "/api/basketball":
+            return self._json(basketball(cfg.get("basketball") or []))
         if path == "/api/tennis":
             return self._json(tennis(cfg.get("tennis") or []))
         if path == "/api/health":
@@ -1111,6 +1251,7 @@ def main():
     httpd.config = cfg
     REMINDERS.start(cfg)
     SPOTIFY.start(cfg)
+    APPLE_CAL.start(cfg)
     log(f"sidescreen listening on http://127.0.0.1:{port}")
     try:
         httpd.serve_forever()
