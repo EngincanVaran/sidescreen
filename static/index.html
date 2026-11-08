@@ -183,7 +183,9 @@
   .sp-tab { height: 30px; padding: 0 14px; border-radius: 999px; border: 0; background: none; font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); cursor: pointer; }
   .sp-tab.on { background: #23272E; color: var(--text); }
   .sp-sub { display: flex; flex-wrap: wrap; gap: 6px; margin-top: -4px; flex: none; }
-  .sports .tk-head .label span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tk-head .label span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tk-head .sp-tabs { flex: none; }
+  .tk-head .label { margin-right: 16px; }
   .sp-sub[hidden] { display: none; }
   .sp-chip { flex: none; display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--muted); font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; }
   .sp-chip img { width: 16px; height: 16px; object-fit: contain; }
@@ -546,7 +548,8 @@
           <div class="tk-body" id="wx-body"></div>
         </div>
         <div class="card ticker">
-          <div class="tk-head"><div class="label" id="fin-label">Markets</div><div class="tk-dots" id="fin-dots"></div></div>
+          <div class="tk-head"><div class="label" id="fin-label">Markets</div><div class="sp-tabs" id="fin-dots"></div></div>
+          <div class="sp-sub" id="fin-sub" hidden></div>
           <div class="tk-body" id="fin-body"><div class="empty">Loading…</div></div>
         </div>
       </div>
@@ -1008,16 +1011,24 @@
     store.set('remShown', shown.slice(-100));
   }
 
-  function finPanels() {
+  const FIN_SECTIONS = [['markets', 'Markets'], ['news', 'News'], ['ai', 'AI']];
+  function finViews() {
     const p = [];
-    if (markets && markets.items && markets.items.length) p.push({ key: 'mk', label: 'Markets', icon: 'trend', html: marketsHTML });
-    if (markets && ((markets.crypto || []).length || (markets.stocks || []).length))
-      p.push({ key: 'cs', label: (markets.stocks || []).length ? 'Crypto & stocks' : 'Crypto', icon: 'coin', html: cryptoStocksHTML });
-    if (news) news.groups.forEach((g, i) => { if (g.items.length) p.push(newsPanel(g, i)); });
-    if (ai && ai.models.length) p.push(pagedPanel('hf:m', 'Trending on Hugging Face', 'cube', ai.models, 5, modelRow));
-    if (ai && ai.papers.length) p.push(pagedPanel('hf:p', 'Papers of the day', 'paper', ai.papers, 4, paperRow));
+    if (markets && markets.items && markets.items.length) p.push({ section: 'markets', chip: 'Rates', key: 'mk', label: 'Markets', icon: 'trend', html: marketsHTML });
+    if (markets && ((markets.crypto || []).length || (markets.stocks || []).length)) {
+      const label = (markets.stocks || []).length ? 'Crypto & stocks' : 'Crypto';
+      p.push({ section: 'markets', chip: label, key: 'cs', label, icon: 'coin', html: cryptoStocksHTML });
+    }
+    // News groups go under News, except the AI group, which leads the AI section.
+    const isAI = g => /^ai\b/i.test(g.name);
+    if (news) news.groups.forEach((g, i) => { if (g.items.length && !isAI(g)) p.push({ ...newsPanel(g, i), section: 'news', chip: g.name }); });
+    if (news) news.groups.forEach((g, i) => { if (g.items.length && isAI(g)) p.push({ ...newsPanel(g, i), section: 'ai', chip: 'News', label: 'AI news' }); });
+    if (ai && ai.models.length) p.push({ ...pagedPanel('hf:m', 'Trending on Hugging Face', 'cube', ai.models, 5, modelRow), section: 'ai', chip: 'Trending models' });
+    if (ai && ai.papers.length) p.push({ ...pagedPanel('hf:p', 'Papers of the day', 'paper', ai.papers, 4, paperRow), section: 'ai', chip: 'Papers' });
     return p;
   }
+  const finPins = makePins('fin', { views: finViews, rotation: finViews, ready: () => !!(markets && news && ai) });
+  const finPanels = () => finPins.panels();
 
   // ---------- AI: Hugging Face trending models and daily papers ----------
   let ai = null;
@@ -1244,7 +1255,7 @@
       tennis.tours.filter(t => t.rankings.length).forEach(t =>
         p.push({ sport: 'tennis', key: 'rk:' + t.id, slot: 'rank', chip: t.name + ' ranking', label: 'Rankings', badge: t.name, weight: 1.25, html: () => rankingsHTML(t) }));
     }
-    return p;
+    return p.map(v => ({ ...v, section: v.sport }));
   }
   // The rotation: every view, but only one table / ranking per round (they take turns).
   function sportRotation() {
@@ -1257,24 +1268,47 @@
     });
   }
   // A chip you tap stays up (no rotating) until you tap it again. Remembered across reloads.
-  let spPin = store.get('spPin') || null;
-  function sportPanels() {
-    if (spPin) {
-      const v = sportViews().find(x => x.key === spPin);
-      if (v) return [{ ...v, pinned: true }];
-      // Not there (yet): rotate meanwhile. Once every sport has loaded and it's still missing, forget it.
-      if (footy && hoops && tennis) { spPin = null; store.set('spPin', null); }
-    }
-    return sportRotation();
+  // ---------- Sections, view chips and pinning (sports card and info card) ----------
+  // Tabs pick a section; chips under them list every view in it. Tapping a chip pins that view
+  // (no rotating, remembered across reloads); tapping it again, a tab, or the card resumes rotating.
+  function makePins(prefix, { views, rotation, ready }) {
+    const P = { pin: store.get(prefix + 'Pin') || null };
+    const save = () => store.set(prefix + 'Pin', P.pin);
+    P.panels = () => {
+      if (P.pin) {
+        const v = views().find(x => x.key === P.pin);
+        if (v) return [{ ...v, pinned: true }];
+        // Not there (yet): rotate meanwhile. Once everything has loaded and it's still missing, forget it.
+        if (ready()) { P.pin = null; save(); }
+      }
+      return rotation();
+    };
+    P.chips = cur => {
+      const el = $('#' + prefix + '-sub');
+      const list = views().filter(v => v.section === cur.section);
+      const html = list.length > 1 ? list.map(v => `<button class="sp-chip${v.key === cur.key ? ' on' : ''}${v.key === P.pin ? ' pin' : ''}" data-view="${esc(v.key)}"
+        title="${v.key === P.pin ? 'Pinned: tap to resume rotating' : 'Show only this'}">${v.chipLogo ? logoImg(v.chipLogo, '') : ''}${esc(v.chip || v.label)}${v.live ? '<i class="lv"></i>' : ''}</button>`).join('') : '';
+      if (el.innerHTML !== html) el.innerHTML = html;
+      el.hidden = !html;
+    };
+    P.click = (r, e) => {
+      const chip = e.target.closest('.sp-chip');
+      if (chip) {
+        const k = chip.dataset.view;
+        P.pin = P.pin === k ? null : k;  // tap the pinned chip again to resume rotating
+        save();
+        if (P.pin || !rotation().some(x => x.key === k)) { if (P.pin) r.key = k; r.draw(true); r.schedule(); }
+        else r.jump(x => x.key === k);
+        return;
+      }
+      const tab = e.target.closest('.sp-tab');
+      if (tab) { P.pin = null; save(); return r.jump(x => x.section === tab.dataset.section); }
+      if (!e.target.closest('button')) { if (P.pin) { P.pin = null; save(); } r.next(); }
+    };
+    return P;
   }
-  function drawSportChips(cur) {
-    const el = $('#sp-sub');
-    const views = sportViews().filter(v => v.sport === cur.sport);
-    const html = views.length > 1 ? views.map(v => `<button class="sp-chip${v.key === cur.key ? ' on' : ''}${v.key === spPin ? ' pin' : ''}" data-view="${esc(v.key)}"
-      title="${v.key === spPin ? 'Pinned: tap to resume rotating' : 'Show only this'}">${v.chipLogo ? logoImg(v.chipLogo, '') : ''}${esc(v.chip)}${v.live ? '<i class="lv"></i>' : ''}</button>`).join('') : '';
-    if (el.innerHTML !== html) el.innerHTML = html;
-    el.hidden = !html;
-  }
+  const spPins = makePins('sp', { views: sportViews, rotation: sportRotation, ready: () => !!(footy && hoops && tennis) });
+  const sportPanels = () => spPins.panels();
   // When a turn-taking panel has been shown, the next round shows the next league / tour.
   function sportLeave(p) {
     if (p.slot === 'table') tableTurn++;
@@ -1315,8 +1349,8 @@
         let tabs = '';
         if (opts.tabs) {
           const all = opts.views ? opts.views() : list;
-          const have = SPORTS.filter(([id]) => all.some(x => x.sport === id));
-          tabs = have.length > 1 ? have.map(([id, name]) => `<button class="sp-tab${p.sport === id ? ' on' : ''}" data-sport="${id}">${name}</button>`).join('') : '';
+          const have = opts.tabs.filter(([id]) => all.some(x => x.section === id));
+          tabs = have.length > 1 ? have.map(([id, name]) => `<button class="sp-tab${p.section === id ? ' on' : ''}" data-section="${id}">${name}</button>`).join('') : '';
         } else tabs = list.length > 1 ? list.map((_, i) => `<i class="${i === r.idx ? 'on' : ''}"></i>`).join('') : '';
         // A data refresh that changes nothing shouldn't touch the DOM (no logo flicker).
         const sig = head + '\u0000' + tabs + '\u0000' + html;
@@ -1364,7 +1398,8 @@
     return p.map(x => ({ ...x, after: () => $('#wx-body').closest('.wxcard').classList.toggle('show-wx', x.key === 'wx') }));
   }
   const wxR = makeRotator('wx', wxPanels);
-  const finR = makeRotator('fin', finPanels), spR = makeRotator('sp', sportPanels, { tabs: true, onLeave: sportLeave, views: sportViews, onPaint: drawSportChips });
+  const finR = makeRotator('fin', finPanels, { tabs: FIN_SECTIONS, views: finViews, onPaint: p => finPins.chips(p) }),
+    spR = makeRotator('sp', sportPanels, { tabs: SPORTS, onLeave: sportLeave, views: sportViews, onPaint: p => spPins.chips(p) });
   // The sports card grows or shrinks as Claude sessions come and go: redraw so it fills the new height.
   let lastSpH = 0, refitTimer = null;
   new ResizeObserver(() => {
@@ -1374,22 +1409,9 @@
     refitTimer = setTimeout(() => { spR.painted = ''; spR.draw(false); }, 250);
   }).observe($('#sp-body'));
   // Clicking a card skips to its next panel; a sport tab jumps to that sport.
-  $('#fin-body').closest('.ticker').addEventListener('click', e => { if (!e.target.closest('button')) finR.next(); });
+  $('#fin-body').closest('.ticker').addEventListener('click', e => finPins.click(finR, e));
   $('#wx-body').closest('.ticker').addEventListener('click', () => wxR.next());
-  $('#sp-body').closest('.ticker').addEventListener('click', e => {
-    const chip = e.target.closest('.sp-chip');
-    if (chip) {
-      const k = chip.dataset.view;
-      spPin = spPin === k ? null : k;  // tap the pinned chip again to resume rotating
-      store.set('spPin', spPin);
-      if (spPin || !sportRotation().some(x => x.key === k)) { spR.key = spPin ? k : spR.key; spR.draw(true); spR.schedule(); }
-      else spR.jump(x => x.key === k);
-      return;
-    }
-    const tab = e.target.closest('.sp-tab');
-    if (tab) { spPin = null; store.set('spPin', null); return spR.jump(x => x.sport === tab.dataset.sport); }
-    if (!e.target.closest('button')) { if (spPin) { spPin = null; store.set('spPin', null); } spR.next(); }
-  });
+  $('#sp-body').closest('.ticker').addEventListener('click', e => spPins.click(spR, e));
   function startRotation() {
     finR.schedule();
     spR.schedule(-baseMs() / 2);  // start half a step apart
