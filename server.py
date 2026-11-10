@@ -1531,35 +1531,68 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, target.read_bytes(), ctype)
 
 
-class RemoteHandler(BaseHTTPRequestHandler):
-    """The one thing open to the network: hook events from Claude Code on your other Macs.
-    Needs the shared token (config "remote.token"); answers nothing else, and never serves the dashboard."""
-    server_version = "sidescreen/1.0"
-    protocol_version = "HTTP/1.1"
+class LanHandler(Handler):
+    """The network port (config "remote"): the dashboard for your other devices, and hook events
+    from Claude Code on your other Macs. Everything needs the shared key:
+      - hooks send it as the X-Sidescreen-Token header;
+      - a browser opens http://this-mac.local:8766/?key=KEY once and keeps it in a cookie.
+    Without it, every request gets 401."""
 
-    def log_message(self, fmt, *args):
-        pass
+    COOKIE = "sidescreen_key"
 
-    def _send(self, code):
-        self.send_response(code)
-        self.send_header("Content-Length", "0")
-        self.end_headers()
+    def _key_ok(self, key):
+        token = self.server.token
+        return bool(token) and bool(key) and hmac.compare_digest(key.encode(), token.encode())
 
     def _authorized(self):
-        token = self.server.token
-        sent = self.headers.get("X-Sidescreen-Token") or ""
-        return bool(token) and hmac.compare_digest(sent.encode(), token.encode())
+        if self._key_ok(self.headers.get("X-Sidescreen-Token") or ""):
+            return True
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == self.COOKIE and self._key_ok(value):
+                return True
+        return False
+
+    # The dashboard's own checks: here "allowed" means "has the key" (instead of "is this Mac").
+    def _host_ok(self):
+        return self._authorized()
+
+    def _same_origin(self):
+        origin = (self.headers.get("Origin") or "").rstrip("/")
+        host = self.headers.get("Host") or ""
+        return bool(host) and origin == f"http://{host}" and (self.headers.get("Content-Type") or "").startswith("application/json")
 
     def do_GET(self):
-        # For checking the connection from the other Mac: 204 = token accepted.
-        if self.path.split("?")[0] == "/api/ping":
+        path, _, query = self.path.partition("?")
+        key = urllib.parse.parse_qs(query).get("key", [""])[0]
+        if key:
+            if not self._key_ok(key):
+                return self._send(401, b"Wrong key.", "text/plain; charset=utf-8")
+            # Remember the key in this browser, then drop it from the address bar.
+            self.send_response(303)
+            self.send_header("Set-Cookie", f"{self.COOKIE}={key}; Path=/; Max-Age=31536000; HttpOnly; SameSite=Strict")
+            self.send_header("Location", path or "/")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if path == "/api/ping":
             return self._send(204 if self._authorized() else 401)
-        self._send(404)
+        if not self._authorized():
+            return self._send(401, b"Sidescreen: open the link with ?key=... (run scripts/remote.py show on the Mac mini).",
+                              "text/plain; charset=utf-8")
+        super().do_GET()
 
     def do_POST(self):
+        if self.path.split("?")[0] != "/api/hook":
+            if not self._authorized():
+                length = int(self.headers.get("Content-Length") or 0)
+                if length:
+                    self.rfile.read(min(length, 2_000_000))
+                return self._send(401)
+            return super().do_POST()
         length = int(self.headers.get("Content-Length") or 0)
-        if self.path.split("?")[0] != "/api/hook" or length > 2_000_000:
-            return self._send(404)
+        if length > 2_000_000:
+            return self._send(413)
         raw = self.rfile.read(length) if length else b""
         if not self._authorized():
             return self._send(401)
@@ -1580,11 +1613,12 @@ def start_remote(cfg):
         log("remote hooks: not started, remote.token must be at least 24 characters (run scripts/remote.py enable)")
         return
     port = int(rc.get("port") or 8766)
-    srv = ThreadingHTTPServer(("0.0.0.0", port), RemoteHandler)
+    srv = ThreadingHTTPServer(("0.0.0.0", port), LanHandler)
     srv.daemon_threads = True
     srv.token = token
+    srv.config = cfg
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    log(f"remote hooks: listening on port {port} (token required)")
+    log(f"network port {port}: dashboard and remote hooks (key required)")
 
 
 def main():

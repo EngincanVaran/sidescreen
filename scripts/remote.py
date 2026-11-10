@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Let Claude Code on your other Macs show up on this Mac's Sidescreen.
+"""Open Sidescreen to your network, behind a key: other Macs' Claude Code sessions show up here,
+and any device on your Wi-Fi can open the dashboard.
 
   python3 scripts/remote.py enable    creates a token, turns the network hook listener on (port 8766),
                                       restarts the server and prints the command for the other Mac
   python3 scripts/remote.py show      prints that command again
+  python3 scripts/remote.py rotate    makes a new key (the old one stops working)
   python3 scripts/remote.py disable   turns the listener off (the token stays, for next time)
 
-The listener only accepts Claude Code hook events that carry the token. The dashboard itself
-stays reachable from this Mac only.
+Port 8766 answers only requests that carry the key (a header from hooks, a cookie in browsers).
+Port 8765 stays reachable from this Mac only.
 """
 
 import json
@@ -66,7 +68,10 @@ def show(remote):
           f"--url {url} --token {tok} --machine MacBook")
     print("\nTo check the connection from the other Mac (204 = working):\n")
     print(f"curl -s -o /dev/null -w '%{{http_code}}\\n' -H 'X-Sidescreen-Token: {tok}' {url.replace('/api/hook', '/api/ping')}")
-    print("\nKeep the token private: anyone on your network who has it can add sessions to the dashboard.")
+    print("\nTo see the dashboard from any device on your network (the browser remembers the key):\n")
+    print(f"http://{host_name()}:{remote.get('port', 8766)}/?key={tok}")
+    print("\nKeep the key private: anyone on your network who has it can see the dashboard (Claude prompts,")
+    print("calendar, reminders) and add sessions to it. Make a new one with: python3 scripts/remote.py rotate")
 
 
 def main():
@@ -80,6 +85,13 @@ def main():
         remote["enabled"] = True
         set_remote(load(), remote)
         print("remote hooks enabled in config.json")
+        restart()
+        show(remote)
+    elif action == "rotate":
+        remote["token"] = secrets.token_urlsafe(32)
+        remote.setdefault("port", 8766)
+        set_remote(load(), remote)
+        print("new key made; the old one stops working now. Re-run the hooks command on your other Macs.")
         restart()
         show(remote)
     elif action == "disable":

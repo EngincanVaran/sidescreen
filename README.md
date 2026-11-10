@@ -57,7 +57,11 @@ Send a fake hook event:
 curl -X POST http://127.0.0.1:8765/api/hook -d '{"hook_event_name":"PermissionRequest","session_id":"t1","cwd":"/tmp/demo","tool_name":"Bash","tool_input":{"command":"ls"}}'
 ```
 
-## Sessions from your other Macs
+## On your Wi-Fi: the dashboard, and sessions from your other Macs
+
+`python3 scripts/remote.py enable` (below) also lets any device on your network open the dashboard: it prints a link like `http://Your-Mac.local:8766/?key=…`. Open it once; the browser keeps the key in a cookie and drops it from the address bar. Without the key, every request gets 401. Anyone with the key can see the dashboard (Claude prompts, calendar, reminders), so keep it private; `python3 scripts/remote.py rotate` makes a new one.
+
+### Sessions from your other Macs
 
 Claude Code sessions on another Mac (a MacBook, say) can show up here too, tagged with that Mac's name.
 
