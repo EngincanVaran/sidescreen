@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Add or remove the Sidescreen HTTP hooks in Claude Code's settings.json.
 
-  python3 scripts/hooks.py install   [--settings PATH] [--url URL]
+  python3 scripts/hooks.py install   [--settings PATH] [--url URL] [--token T --machine NAME]
   python3 scripts/hooks.py uninstall [--settings PATH] [--url URL]
+
+To send this Mac's sessions to Sidescreen on another Mac (see scripts/remote.py on that Mac):
+  python3 scripts/hooks.py install --url http://Other-Mac.local:8766/api/hook --token T --machine MacBook
 
 Backs the file up before writing, keeps every other setting and hook as-is,
 and never adds the same hook twice.
@@ -34,7 +37,16 @@ def is_ours(hook, url):
     return isinstance(hook, dict) and hook.get("type") == "http" and hook.get("url") == url
 
 
-def install(settings, url):
+def make_hook(url, token=None, machine=None):
+    hook = {"type": "http", "url": url, "timeout": 2}
+    if token:
+        # Another Mac: send the shared token and a name for the dashboard; give up fast when it's unreachable.
+        hook["headers"] = {"X-Sidescreen-Token": token, "X-Sidescreen-Machine": machine or "Remote"}
+        hook["timeout"] = 1
+    return hook
+
+
+def install(settings, url, token=None, machine=None):
     hooks = settings.setdefault("hooks", {})
     if not isinstance(hooks, dict):
         raise SystemExit("settings.json: 'hooks' is not an object, refusing to edit it")
@@ -43,9 +55,15 @@ def install(settings, url):
         groups = hooks.setdefault(event, [])
         if not isinstance(groups, list):
             raise SystemExit(f"settings.json: hooks.{event} is not a list, refusing to edit it")
-        if any(is_ours(h, url) for g in groups if isinstance(g, dict) for h in g.get("hooks") or []):
+        want = make_hook(url, token, machine)
+        mine = [h for g in groups if isinstance(g, dict) for h in g.get("hooks") or [] if is_ours(h, url)]
+        if mine:
+            # Already there: refresh the token / name if they changed.
+            for h in mine:
+                if h != want:
+                    h.clear(); h.update(want); added += 1
             continue
-        group = {"hooks": [{"type": "http", "url": url, "timeout": 2}]}
+        group = {"hooks": [want]}
         if matcher is not None:
             group = {"matcher": matcher, **group}
         groups.append(group)
@@ -85,6 +103,8 @@ def main():
     ap.add_argument("action", choices=["install", "uninstall"])
     ap.add_argument("--settings", default=str(Path.home() / ".claude" / "settings.json"))
     ap.add_argument("--url", default="http://127.0.0.1:8765/api/hook")
+    ap.add_argument("--token", help="shared token, for sending to Sidescreen on another Mac")
+    ap.add_argument("--machine", default="", help="name shown on the dashboard, e.g. MacBook")
     args = ap.parse_args()
 
     path = Path(args.settings).expanduser()
@@ -102,7 +122,7 @@ def main():
     else:
         settings = {}
 
-    n = install(settings, args.url) if args.action == "install" else uninstall(settings, args.url)
+    n = install(settings, args.url, args.token, args.machine) if args.action == "install" else uninstall(settings, args.url)
     if n == 0:
         print(f"hooks already {'present' if args.action == 'install' else 'absent'} in {path}, no change")
         return

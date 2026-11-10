@@ -253,6 +253,7 @@
   .empty { font-size: 20px; color: var(--muted); padding: 6px 0; }
 
   /* Sessions */
+  .sess .mach { margin-left: 10px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--border-strong); font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--muted); vertical-align: 3px; }
   .sessions { padding: 32px 36px; display: flex; flex-direction: column; gap: 18px; flex: 1 1 0; min-height: 0; overflow: hidden; }
   .slist { display: flex; flex-direction: column; gap: 10px; }
   .sess { border: 1px solid var(--border); border-radius: 18px; padding: 14px 22px; display: grid; grid-template-columns: auto 1fr auto; gap: 4px 16px; align-items: center; background: #15171C; }
@@ -803,7 +804,7 @@
     else if (s.updated) meta = ago(nowSec - s.updated).replace(/ \d+s$/, '') + ' ago';
     return `<div class="sess" data-s="${esc(s.state)}">
       <span class="dot"></span>
-      <span class="name">${esc(s.project)}</span>
+      <span class="name">${esc(s.project)}${s.machine ? `<span class="mach">${esc(s.machine)}</span>` : ''}</span>
       <span class="state">${STATE_LABEL[s.state] || esc(s.state)}<span class="mono">${meta}</span></span>
       <span class="detail${d.mono ? ' mono' : ''}">${esc(d.text)}</span>
     </div>`;

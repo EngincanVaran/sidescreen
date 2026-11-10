@@ -57,6 +57,24 @@ Send a fake hook event:
 curl -X POST http://127.0.0.1:8765/api/hook -d '{"hook_event_name":"PermissionRequest","session_id":"t1","cwd":"/tmp/demo","tool_name":"Bash","tool_input":{"command":"ls"}}'
 ```
 
+## Sessions from your other Macs
+
+Claude Code sessions on another Mac (a MacBook, say) can show up here too, tagged with that Mac's name.
+
+1. On this Mac (the one with the screen):
+
+   ```bash
+   python3 scripts/remote.py enable
+   ```
+
+   It makes a secret token, opens a small listener on port 8766 that accepts only Claude Code hook events carrying that token, restarts the server and prints the command for the other Mac. The dashboard itself stays reachable from this Mac only. `python3 scripts/remote.py show` prints the command again; `disable` turns the listener off.
+
+2. On the other Mac, run the printed command. It adds hooks to that Mac's `~/.claude/settings.json` (backed up first) that send events to this Mac with the token. A second command it prints checks the connection (`204` means it works).
+
+Both Macs need to reach each other: the same home network works out of the box (`Your-Mac.local`). From elsewhere, use something like Tailscale and its address instead. When this Mac can't be reached, each hook gives up after 1 second, so the other Mac's sessions only slow down slightly. Events travel unencrypted over the local network (prompts included); over Tailscale they're encrypted.
+
+Usage numbers (tokens, active time) still count only this Mac's sessions.
+
 ## Calendar
 
 The agenda reads the Mac's own calendars directly: everything Calendar.app shows (iCloud, Google, Exchange accounts added in System Settings), with repeating events, and events that span several days on each day they cover.
@@ -98,6 +116,7 @@ Stocks need a free key from [Twelve Data](https://twelvedata.com) (about 800 req
 | `stocks` | `api_key` (Twelve Data) and `symbols`. Hidden until a key is set. |
 | `reminders` | `enabled`, `lists` (empty = all lists), `days_ahead`. |
 | `spotify` | `enabled` (default `true`). |
+| `remote` | `enabled`, `port` (8766), `token`: sessions from other Macs. Set up with `scripts/remote.py`. |
 | `kickoff_reminder_minutes` | Alert this many minutes before a followed team plays (0 = off). |
 | `night_clock` | `"off"` (only with the moon button) or `"auto"` (also during `night_dim` hours). |
 | `goal_alerts` | `"followed"` (your teams only; in basketball, clubs with the same name as a team you follow) or `"all"` (every live game, including all tennis matches). |
@@ -124,7 +143,8 @@ Other Turkish feeds that work: `https://www.hurriyet.com.tr/rss/gundem`, `https:
   - `GET`/`POST /api/prefs`: followed teams and players, and settings, saved to `prefs.json`. Writes are only accepted as JSON from the dashboard's own address.
   - `GET /api/config`: public settings only.
 - `static/index.html`: the whole dashboard. Weather comes straight from Open-Meteo.
-- `scripts/hooks.py`: adds/removes the hooks in `settings.json`.
+- `scripts/hooks.py`: adds/removes the hooks in `settings.json` (with `--token` and `--machine` for sending to another Mac).
+- `scripts/remote.py`: turns on the token-protected listener for other Macs' sessions.
 - `scripts/open-display.sh` + `scripts/screen-frame.js`: find the portable screen and open Chrome on it.
 - `scripts/reminders.js`, `scripts/spotify.js`: read Reminders and Spotify
 - `scripts/calendar-helper/`: the Sidescreen Calendar helper app (Swift, EventKit) that reads your calendars (JavaScript for Automation, run with `osascript`).

@@ -7,6 +7,7 @@ needs `icalendar` + `recurring-ical-events`.
 """
 
 import gzip
+import hmac
 import json
 import math
 import os
@@ -140,7 +141,7 @@ class Sessions:
             except OSError as e:
                 log(f"could not save sessions: {e}")
 
-    def handle(self, p):
+    def handle(self, p, machine=""):
         if not isinstance(p, dict):
             return
         sid = p.get("session_id")
@@ -159,6 +160,8 @@ class Sessions:
                     "id": sid, "project": "", "state": "idle", "tool": None, "detail": "",
                     "prompt": "", "message": "", "tools": 0, "turn_started": None, "updated": now,
                 }
+            if machine:
+                s["machine"] = machine  # sessions from another Mac (see RemoteHandler)
             cwd = p.get("cwd")
             if cwd:
                 s["project"] = os.path.basename(cwd.rstrip("/")) or cwd
@@ -1528,6 +1531,62 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, target.read_bytes(), ctype)
 
 
+class RemoteHandler(BaseHTTPRequestHandler):
+    """The one thing open to the network: hook events from Claude Code on your other Macs.
+    Needs the shared token (config "remote.token"); answers nothing else, and never serves the dashboard."""
+    server_version = "sidescreen/1.0"
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def _send(self, code):
+        self.send_response(code)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _authorized(self):
+        token = self.server.token
+        sent = self.headers.get("X-Sidescreen-Token") or ""
+        return bool(token) and hmac.compare_digest(sent.encode(), token.encode())
+
+    def do_GET(self):
+        # For checking the connection from the other Mac: 204 = token accepted.
+        if self.path.split("?")[0] == "/api/ping":
+            return self._send(204 if self._authorized() else 401)
+        self._send(404)
+
+    def do_POST(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        if self.path.split("?")[0] != "/api/hook" or length > 2_000_000:
+            return self._send(404)
+        raw = self.rfile.read(length) if length else b""
+        if not self._authorized():
+            return self._send(401)
+        machine = re.sub(r"[^\w .'-]", "", self.headers.get("X-Sidescreen-Machine") or "")[:24].strip() or "Remote"
+        try:
+            SESSIONS.handle(json.loads(raw or b"{}"), machine=machine)
+        except Exception as e:
+            log(f"bad remote hook payload: {e}")
+        self._send(204)  # like the local hook: never hold up a session
+
+
+def start_remote(cfg):
+    rc = cfg.get("remote") or {}
+    token = str(rc.get("token") or "")
+    if not rc.get("enabled"):
+        return
+    if len(token) < 24:
+        log("remote hooks: not started, remote.token must be at least 24 characters (run scripts/remote.py enable)")
+        return
+    port = int(rc.get("port") or 8766)
+    srv = ThreadingHTTPServer(("0.0.0.0", port), RemoteHandler)
+    srv.daemon_threads = True
+    srv.token = token
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    log(f"remote hooks: listening on port {port} (token required)")
+
+
 def main():
     cfg = load_config()
     port = int(os.environ.get("SIDESCREEN_PORT") or cfg.get("port") or 8765)
@@ -1537,6 +1596,7 @@ def main():
     REMINDERS.start(cfg)
     SPOTIFY.start(cfg)
     APPLE_CAL.start(cfg)
+    start_remote(cfg)
     log(f"sidescreen listening on http://127.0.0.1:{port}")
     try:
         httpd.serve_forever()
