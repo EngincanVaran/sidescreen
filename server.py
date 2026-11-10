@@ -1539,6 +1539,14 @@ class LanHandler(Handler):
     Without it, every request gets 401."""
 
     COOKIE = "sidescreen_key"
+    _noted = {}
+
+    def _note(self, msg, key=None):
+        """Logs network activity, at most once every 10 minutes per kind (hooks fire constantly)."""
+        k = key or msg
+        if time.time() - LanHandler._noted.get(k, 0) > 600:
+            LanHandler._noted[k] = time.time()
+            log(msg)
 
     def _key_ok(self, key):
         token = self.server.token
@@ -1576,7 +1584,9 @@ class LanHandler(Handler):
             self.end_headers()
             return
         if path == "/api/ping":
-            return self._send(204 if self._authorized() else 401)
+            ok = self._authorized()
+            log(f"ping from {self.client_address[0]}: {'key ok' if ok else 'wrong or missing key'}")
+            return self._send(204 if ok else 401)
         if not self._authorized():
             return self._send(401, b"Sidescreen: open the link with ?key=... (run scripts/remote.py show on the Mac mini).",
                               "text/plain; charset=utf-8")
@@ -1595,10 +1605,13 @@ class LanHandler(Handler):
             return self._send(413)
         raw = self.rfile.read(length) if length else b""
         if not self._authorized():
+            self._note(f"hook refused (wrong or missing key) from {self.client_address[0]}")
             return self._send(401)
         machine = re.sub(r"[^\w .'-]", "", self.headers.get("X-Sidescreen-Machine") or "")[:24].strip() or "Remote"
         try:
-            SESSIONS.handle(json.loads(raw or b"{}"), machine=machine)
+            p = json.loads(raw or b"{}")
+            self._note(f"hooks arriving from {machine} ({self.client_address[0]})", key=machine)
+            SESSIONS.handle(p, machine=machine)
         except Exception as e:
             log(f"bad remote hook payload: {e}")
         self._send(204)  # like the local hook: never hold up a session

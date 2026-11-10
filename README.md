@@ -73,9 +73,11 @@ Claude Code sessions on another Mac (a MacBook, say) can show up here too, tagge
 
    It makes a secret token, opens a small listener on port 8766 that accepts only Claude Code hook events carrying that token, restarts the server and prints the command for the other Mac. The dashboard itself stays reachable from this Mac only. `python3 scripts/remote.py show` prints the command again; `disable` turns the listener off.
 
-2. On the other Mac, run the printed command. It adds hooks to that Mac's `~/.claude/settings.json` (backed up first) that send events to this Mac with the token. A second command it prints checks the connection (`204` means it works).
+2. On the other Mac, run the printed command. It adds hooks to that Mac's `~/.claude/settings.json` (backed up first) that send events to this Mac with the token. A second command it prints checks the connection (`204` means it works). Start a new session there (running ones keep their old hooks).
 
-Both Macs need to reach each other: the same home network works out of the box (`Your-Mac.local`). From elsewhere, use something like Tailscale and its address instead. When this Mac can't be reached, each hook gives up after 1 second, so the other Mac's sessions only slow down slightly. Events travel unencrypted over the local network (prompts included); over Tailscale they're encrypted.
+   Claude Code won't send HTTP hooks to home-network addresses, so these are command hooks: a background `curl` that posts each event. They never make the other Mac wait.
+
+Both Macs need to reach each other: the same home network works out of the box (`Your-Mac.local`). From elsewhere, use something like Tailscale and its address instead. When this Mac can't be reached, the background curl just fails quietly. Events travel unencrypted over the local network (prompts included); over Tailscale they're encrypted.
 
 Usage numbers (tokens, active time) still count only this Mac's sessions.
 

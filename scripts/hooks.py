@@ -14,6 +14,8 @@ and never adds the same hook twice.
 import argparse
 import json
 import os
+import re
+import shlex
 import shutil
 import sys
 import tempfile
@@ -34,16 +36,25 @@ EVENTS = [
 
 
 def is_ours(hook, url):
-    return isinstance(hook, dict) and hook.get("type") == "http" and hook.get("url") == url
+    if not isinstance(hook, dict):
+        return False
+    if hook.get("type") == "http":
+        return hook.get("url") == url
+    # Hooks that send to another Mac are curl commands (see make_hook).
+    return hook.get("type") == "command" and "X-Sidescreen-Token" in str(hook.get("command")) and url in str(hook.get("command"))
 
 
 def make_hook(url, token=None, machine=None):
-    hook = {"type": "http", "url": url, "timeout": 2}
-    if token:
-        # Another Mac: send the shared token and a name for the dashboard; give up fast when it's unreachable.
-        hook["headers"] = {"X-Sidescreen-Token": token, "X-Sidescreen-Machine": machine or "Remote"}
-        hook["timeout"] = 1
-    return hook
+    if not token:
+        return {"type": "http", "url": url, "timeout": 2}
+    # Another Mac. Claude Code won't send HTTP hooks to home-network addresses (only to this Mac),
+    # so this is a command hook: curl posts the event (which arrives on stdin) with the key and a
+    # name for the dashboard. It runs in the background, so this Mac never waits for the other one.
+    machine = re.sub(r"[^\w .-]", "", machine or "Remote")[:24] or "Remote"
+    cmd = ("curl -s -m 3 -o /dev/null -X POST -H 'Content-Type: application/json' "
+           f"-H {shlex.quote('X-Sidescreen-Token: ' + token)} -H {shlex.quote('X-Sidescreen-Machine: ' + machine)} "
+           f"--data-binary @- {shlex.quote(url)} || true")
+    return {"type": "command", "command": cmd, "async": True, "timeout": 5}
 
 
 def install(settings, url, token=None, machine=None):
